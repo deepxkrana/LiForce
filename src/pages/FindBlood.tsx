@@ -1,0 +1,1104 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { Search, MapPin, Phone, Navigation, X, Mail, Calendar, Truck, Clock, Sparkles, Copy, Check, AlertCircle, ShieldCheck } from 'lucide-react';
+import Navbar from '../components/Navbar';
+import Footer from '../components/Footer';
+import { useToast } from '../components/ToastProvider';
+import { API_URL } from '../lib/api';
+import L from 'leaflet';
+
+const createCustomIcon = (color: string) =>
+  L.divIcon({
+    className: 'my-custom-pin',
+    iconAnchor: [0, 12],
+    popupAnchor: [0, -24],
+    html: `<span style="background-color:${color};width:24px;height:24px;display:block;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.15);" />`,
+  });
+
+const iconGood = createCustomIcon('#1D9E75');
+const iconWarning = createCustomIcon('#E67E22');
+const iconCritical = createCustomIcon('#E24B4A');
+const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+const TIME_SLOTS = [
+  '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+  '12:00', '12:30', '13:00', '13:30', '14:00', '14:30',
+  '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'
+];
+
+const MAJOR_INDIAN_CITIES = [
+  { name: 'Chandigarh', pincode: '160017', lat: 30.7333, lng: 76.7794 },
+  { name: 'Mohali', pincode: '160055', lat: 30.6942, lng: 76.7381 },
+  { name: 'Panchkula', pincode: '134109', lat: 30.6915, lng: 76.8537 },
+  { name: 'Mumbai', pincode: '400001', lat: 19.0760, lng: 72.8777 },
+  { name: 'Delhi', pincode: '110001', lat: 28.6139, lng: 77.2090 },
+  { name: 'Bengaluru', pincode: '560001', lat: 12.9716, lng: 77.5946 },
+  { name: 'Hyderabad', pincode: '500001', lat: 17.3850, lng: 78.4867 },
+  { name: 'Ahmedabad', pincode: '380001', lat: 23.0225, lng: 72.5714 },
+  { name: 'Chennai', pincode: '600001', lat: 13.0827, lng: 80.2707 },
+  { name: 'Kolkata', pincode: '700001', lat: 22.5726, lng: 88.3639 },
+  { name: 'Pune', pincode: '411001', lat: 18.5204, lng: 73.8567 },
+  { name: 'Jaipur', pincode: '302001', lat: 26.9124, lng: 75.7873 },
+  { name: 'Lucknow', pincode: '226001', lat: 26.8467, lng: 80.9462 },
+  { name: 'Patna', pincode: '800001', lat: 25.5941, lng: 85.1376 },
+  { name: 'Indore', pincode: '452001', lat: 22.7196, lng: 75.8577 },
+  { name: 'Bhopal', pincode: '462001', lat: 23.2599, lng: 77.4126 },
+  { name: 'Surat', pincode: '395003', lat: 21.1702, lng: 72.8311 },
+  { name: 'Nagpur', pincode: '440001', lat: 21.1458, lng: 79.0882 },
+  { name: 'Visakhapatnam', pincode: '530001', lat: 17.6868, lng: 83.2185 },
+  { name: 'Kanpur', pincode: '208001', lat: 26.4499, lng: 80.3319 },
+  { name: 'Ludhiana', pincode: '141001', lat: 30.9010, lng: 75.8573 },
+  { name: 'Amritsar', pincode: '143001', lat: 31.6340, lng: 74.8723 },
+];
+
+const ChangeMapView: React.FC<{ center: [number, number] }> = ({ center }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, 13);
+  }, [center, map]);
+  return null;
+};
+
+const FindBlood: React.FC = () => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { showToast } = useToast();
+
+  const [selectedUrgency, setSelectedUrgency] = useState('Normal');
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [distance, setDistance] = useState(10);
+  const [openNow, setOpenNow] = useState(false);
+  const [searchGroup, setSearchGroup] = useState(searchParams.get('group') || '');
+  const [searchCity, setSearchCity] = useState(searchParams.get('city') || 'Chandigarh');
+  const [showCityDropdown, setShowCityDropdown] = useState(false);
+  const cityDropdownRef = useRef<HTMLDivElement>(null);
+
+  const filteredCities = useMemo(() => {
+    if (!searchCity.trim()) return MAJOR_INDIAN_CITIES;
+    const query = searchCity.toLowerCase();
+    return MAJOR_INDIAN_CITIES.filter(
+      (c) => c.name.toLowerCase().includes(query) || c.pincode.includes(query)
+    );
+  }, [searchCity]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (cityDropdownRef.current && !cityDropdownRef.current.contains(event.target as Node)) {
+        setShowCityDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const [banks, setBanks] = useState<any[]>([]);
+  const [mapCenter, setMapCenter] = useState<[number, number]>([30.7333, 76.7794]);
+
+  // Premium modal states
+  const [selectedContactBank, setSelectedContactBank] = useState<any | null>(null);
+  const [selectedRequestBank, setSelectedRequestBank] = useState<any | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [requestForm, setRequestForm] = useState({
+    bloodGroup: 'A+',
+    unitsRequired: 1,
+    deliveryMode: 'Self-Collection',
+    deliveryAddress: '',
+    date: new Date().toISOString().split('T')[0],
+    timeSlot: '10:00',
+    patientName: '',
+    patientAge: '',
+    patientGender: 'Male',
+    urgencyLevel: 'Normal',
+    contactNumber: '',
+  });
+
+  const isLoggedIn = !!localStorage.getItem('liforce_token');
+
+  // Load user data if logged in to autofill contact number
+  useEffect(() => {
+    if (isLoggedIn) {
+      const fetchDonorProfile = async () => {
+        try {
+          const token = localStorage.getItem('liforce_token');
+          const res = await fetch(`${API_URL}/donors/me`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.phone) {
+              setRequestForm(prev => ({ ...prev, contactNumber: data.phone }));
+            }
+          }
+        } catch (err) {
+          console.warn('Could not pre-fetch donor contact info', err);
+        }
+      };
+      fetchDonorProfile();
+    }
+  }, [isLoggedIn]);
+
+  // Set default requested blood group when a blood bank is selected
+  useEffect(() => {
+    if (selectedRequestBank) {
+      if (selectedGroups.length > 0) {
+        setRequestForm(prev => ({ ...prev, bloodGroup: selectedGroups[0] }));
+      } else if (searchGroup) {
+        setRequestForm(prev => ({ ...prev, bloodGroup: searchGroup }));
+      } else if (selectedRequestBank.bloodGroups?.length > 0) {
+        setRequestForm(prev => ({ ...prev, bloodGroup: selectedRequestBank.bloodGroups[0].type }));
+      } else {
+        setRequestForm(prev => ({ ...prev, bloodGroup: 'A+' }));
+      }
+    }
+  }, [selectedRequestBank, selectedGroups, searchGroup]);
+
+  useEffect(() => {
+    const g = searchParams.get('group');
+    const c = searchParams.get('city');
+    if (g) {
+      setSearchGroup(g);
+      setSelectedGroups([g]);
+    }
+    if (c) setSearchCity(c);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const fetchBanks = async () => {
+      try {
+        const response = await fetch(`${API_URL}/bloodbanks`);
+        const data = await response.json();
+        const formatted = data.map((b: any) => {
+          let overallStatus = 'Good';
+          if (b.inventory?.length) {
+            const criticalCount = b.inventory.filter((i: any) => i.status === 'Critical').length;
+            if (criticalCount > 2) overallStatus = 'Critical';
+            else if (criticalCount > 0) overallStatus = 'Warning';
+          } else overallStatus = 'Warning';
+
+          return {
+            id: b.id,
+            name: b.name,
+            address: b.address,
+            lat: b.latitude || 30.7333,
+            lng: b.longitude || 76.7794,
+            distance: '3.2 km',
+            phone: b.phone || '',
+            email: b.email || '',
+            licenseNumber: b.licenseNumber || '',
+            openNow: true,
+            status: overallStatus,
+            bloodGroups: (b.inventory || []).map((inv: any) => ({
+              type: inv.bloodGroup,
+              count: inv.unitsAvailable,
+              status: inv.status,
+            })),
+          };
+        });
+        setBanks(formatted);
+      } catch {
+        showToast('Could not load blood banks. Is the backend running?', 'error');
+      }
+    };
+    fetchBanks();
+  }, [showToast]);
+
+  const filteredBanks = useMemo(() => {
+    return banks.filter((bank) => {
+      if (openNow && !bank.openNow) return false;
+      if (searchCity.trim() && !bank.address?.toLowerCase().includes(searchCity.toLowerCase())) return false;
+      if (selectedGroups.length > 0) {
+        const hasGroup = bank.bloodGroups.some((bg: any) => selectedGroups.includes(bg.type));
+        if (!hasGroup) return false;
+      }
+      if (searchGroup && !bank.bloodGroups.some((bg: any) => bg.type === searchGroup)) return false;
+      return true;
+    });
+  }, [banks, openNow, searchCity, selectedGroups, searchGroup]);
+
+  const toggleGroup = (bg: string) => {
+    setSelectedGroups((prev) =>
+      prev.includes(bg) ? prev.filter((g) => g !== bg) : [...prev, bg]
+    );
+  };
+
+  const clearFilters = () => {
+    setSelectedGroups([]);
+    setSearchGroup('');
+    setOpenNow(false);
+    setDistance(10);
+    setSearchCity('');
+  };
+
+  const handleGeolocation = () => {
+    if (!navigator.geolocation) {
+      showToast('Geolocation is not supported in your browser.', 'error');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setMapCenter([pos.coords.latitude, pos.coords.longitude]);
+        showToast('Map centered on your location.', 'success');
+      },
+      () => showToast('Could not access your location.', 'error')
+    );
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Critical': return 'bg-critical text-white border-critical';
+      case 'Low': return 'bg-warning text-white border-warning';
+      case 'Good': return 'bg-accent text-white border-accent';
+      default: return 'bg-gray-200 text-gray-800';
+    }
+  };
+
+  const getBankMarkerIcon = (status: string) => {
+    if (status === 'Critical') return iconCritical;
+    if (status === 'Warning') return iconWarning;
+    return iconGood;
+  };
+
+  const handleSearch = () => {
+    if (searchGroup && !selectedGroups.includes(searchGroup)) {
+      setSelectedGroups(searchGroup ? [searchGroup] : []);
+    }
+    showToast(`Showing ${filteredBanks.length} blood bank(s)`, 'info');
+  };
+
+  const handleCopy = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+    showToast(`${field} copied to clipboard!`, 'success');
+  };
+
+  const handleRequestSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!requestForm.patientAge) {
+      showToast('Patient age is required', 'error');
+      return;
+    }
+    if (requestForm.deliveryMode === 'Delivery' && !requestForm.deliveryAddress.trim()) {
+      showToast('Delivery address is required for delivery mode', 'error');
+      return;
+    }
+
+    let combinedRequiredDate: string | null = null;
+    if (requestForm.date && requestForm.timeSlot) {
+      combinedRequiredDate = new Date(`${requestForm.date}T${requestForm.timeSlot}:00`).toISOString();
+    }
+
+    const payload = {
+      patientName: requestForm.patientName.trim() || 'Request from Find Blood',
+      bloodGroup: requestForm.bloodGroup,
+      unitsRequired: Number(requestForm.unitsRequired) || 1,
+      hospitalName: selectedRequestBank.name,
+      contactNumber: requestForm.contactNumber.trim() || '1234567890',
+      urgencyLevel: requestForm.urgencyLevel,
+      latitude: selectedRequestBank.lat || 30.7333,
+      longitude: selectedRequestBank.lng || 76.7794,
+      patientGender: requestForm.patientGender,
+      patientAge: Number(requestForm.patientAge),
+      deliveryMode: requestForm.deliveryMode,
+      requiredDate: combinedRequiredDate,
+      deliveryAddress: requestForm.deliveryMode === 'Delivery' ? requestForm.deliveryAddress : selectedRequestBank.address,
+      assignedBloodBankId: selectedRequestBank.id,
+    };
+
+    const token = localStorage.getItem('liforce_token');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const res = await fetch(`${API_URL}/emergencies`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create emergency request');
+      }
+
+      showToast('Emergency request successfully placed and blood bank notified!', 'success');
+      setSelectedRequestBank(null);
+    } catch (err: any) {
+      showToast(err.message || 'Error occurred while placing request', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col bg-background">
+      <Navbar />
+
+      <div className="bg-surface border-b border-border py-8 mt-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h1 className="text-3xl font-bold text-text-primary mb-6">Find blood near you</h1>
+          <div className="bg-white p-4 rounded-xl border border-border shadow-sm flex flex-col lg:flex-row gap-3 items-stretch">
+            <div className="flex-1 flex items-center px-4 py-3 bg-background rounded-lg border border-border min-h-[48px]">
+              <span className="text-primary font-bold mr-3 text-sm shrink-0">ABO</span>
+              <select
+                value={searchGroup}
+                onChange={(e) => setSearchGroup(e.target.value)}
+                className="w-full bg-transparent outline-none text-text-primary"
+              >
+                <option value="">Any Blood Group</option>
+                {BLOOD_GROUPS.map((bg) => (
+                  <option key={bg} value={bg}>{bg}</option>
+                ))}
+              </select>
+            </div>
+            <div
+              ref={cityDropdownRef}
+              className="flex-1 flex items-center px-4 py-3 bg-background rounded-lg border border-border relative min-h-[48px]"
+            >
+              <MapPin className="text-text-secondary mr-3 h-5 w-5 shrink-0" />
+              <input
+                type="text"
+                value={searchCity}
+                onChange={(e) => {
+                  setSearchCity(e.target.value);
+                  setShowCityDropdown(true);
+                }}
+                onFocus={() => setShowCityDropdown(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setShowCityDropdown(false);
+                  }
+                }}
+                placeholder="City or Pincode"
+                className="w-full bg-transparent outline-none text-text-primary pr-10"
+              />
+              <button
+                type="button"
+                onClick={handleGeolocation}
+                className="absolute right-3 text-primary hover:text-primary-dark z-10"
+                aria-label="Use my location"
+              >
+                <Navigation className="h-5 w-5" />
+              </button>
+
+              <AnimatePresence>
+                {showCityDropdown && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="absolute left-0 right-0 top-full mt-2 bg-white/95 backdrop-blur-md border border-border shadow-lg rounded-xl max-h-60 overflow-y-auto z-50 py-1.5"
+                    style={{
+                      scrollbarWidth: 'thin',
+                    }}
+                  >
+                    {filteredCities.length === 0 ? (
+                      <div className="px-4 py-2.5 text-sm text-text-secondary italic">
+                        No major cities found
+                      </div>
+                    ) : (
+                      filteredCities.map((city) => (
+                        <button
+                          key={`${city.name}-${city.pincode}`}
+                          type="button"
+                          onClick={() => {
+                            setSearchCity(city.name);
+                            setMapCenter([city.lat, city.lng]);
+                            setShowCityDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-primary-light hover:text-primary transition-all flex items-center justify-between group cursor-pointer"
+                        >
+                          <span className="font-semibold text-text-primary group-hover:text-primary transition-colors">
+                            {city.name}
+                          </span>
+                          <span className="text-xs text-text-secondary bg-gray-100 group-hover:bg-primary/10 group-hover:text-primary px-2 py-0.5 rounded transition-all">
+                            {city.pincode}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            <div className="flex bg-background rounded-lg border border-border p-1 shrink-0">
+              {['Normal', 'Urgent', 'Emergency'].map((urgency) => (
+                <button
+                  key={urgency}
+                  type="button"
+                  onClick={() => {
+                    setSelectedUrgency(urgency);
+                    if (urgency === 'Emergency') navigate('/emergency');
+                  }}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${
+                    selectedUrgency === urgency
+                      ? urgency === 'Emergency'
+                        ? 'bg-critical text-white'
+                        : urgency === 'Urgent'
+                        ? 'bg-warning text-white'
+                        : 'bg-surface shadow-sm text-text-primary'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  {urgency}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={handleSearch}
+              className="bg-primary text-white px-6 py-3 rounded-lg font-bold hover:bg-primary-dark transition-colors flex items-center justify-center shrink-0"
+            >
+              <Search className="h-5 w-5 mr-2" /> Search
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full mb-16 shrink-0">
+        <div className="flex flex-col lg:flex-row bg-surface border border-border rounded-2xl shadow-sm overflow-hidden min-h-0 lg:h-[680px] relative z-10">
+          <div className="w-full lg:w-[400px] xl:w-[420px] bg-surface flex flex-col border-b lg:border-b-0 lg:border-r border-border h-full shrink-0">
+            <div className="p-4 border-b border-border bg-background shrink-0">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-text-primary">Filters</h3>
+                <button type="button" onClick={clearFilters} className="text-sm text-primary font-medium hover:underline">
+                  Clear all
+                </button>
+              </div>
+              <div className="mb-4">
+                <p className="text-sm font-medium text-text-secondary mb-2">Blood Group</p>
+                <div className="flex flex-wrap gap-2">
+                  {BLOOD_GROUPS.map((bg) => (
+                    <button
+                      key={bg}
+                      type="button"
+                      onClick={() => toggleGroup(bg)}
+                      className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${
+                        selectedGroups.includes(bg)
+                          ? 'bg-primary text-white'
+                          : 'bg-white border border-border text-text-secondary hover:border-primary'
+                      }`}
+                    >
+                      {bg}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-text-secondary mb-2">Distance: {distance} km</p>
+                  <input
+                    type="range"
+                    min={1}
+                    max={50}
+                    value={distance}
+                    onChange={(e) => setDistance(parseInt(e.target.value))}
+                    className="w-full accent-primary"
+                  />
+                </div>
+                <label className="flex items-center cursor-pointer shrink-0">
+                  <div className="relative">
+                    <input type="checkbox" className="sr-only" checked={openNow} onChange={() => setOpenNow(!openNow)} />
+                    <div className={`block w-10 h-6 rounded-full transition-colors ${openNow ? 'bg-primary' : 'bg-gray-300'}`} />
+                    <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${openNow ? 'translate-x-4' : ''}`} />
+                  </div>
+                  <span className="ml-3 text-sm font-medium text-text-secondary">Open now</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex-grow overflow-y-auto p-4 space-y-4 bg-background min-h-[300px] lg:min-h-0 overscroll-contain">
+              {filteredBanks.length === 0 && (
+                <p className="text-center text-text-secondary mt-10">No blood banks match your filters.</p>
+              )}
+              {filteredBanks.map((bank, index) => (
+                <motion.div
+                  key={bank.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="bg-surface rounded-xl border border-border p-4 shadow-sm hover:shadow-md transition-all"
+                >
+                  <div className="flex justify-between items-start gap-2 mb-3">
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-text-primary text-lg leading-tight">{bank.name}</h3>
+                      <p className="text-text-secondary text-sm flex items-center mt-1">
+                        <MapPin className="h-3 w-3 mr-1 shrink-0" />
+                        <span className="truncate">{bank.distance} · {bank.address}</span>
+                      </p>
+                    </div>
+                    {bank.openNow && (
+                      <span className="bg-[#E8F5F1] text-accent text-xs px-2 py-1 rounded font-medium shrink-0">Open</span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {bank.bloodGroups.length ? (
+                      bank.bloodGroups.map((bg: any, i: number) => (
+                        <div key={i} className={`flex items-center text-xs px-2 py-1 rounded-md border ${getStatusColor(bg.status)}`}>
+                          <span className="font-bold mr-1">{bg.type}</span>
+                          <span>{bg.count} units</span>
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-xs text-text-secondary italic">Inventory unavailable</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedContactBank(bank)}
+                      className="flex-1 border border-border text-text-primary py-2 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center justify-center cursor-pointer"
+                    >
+                      <Phone className="h-4 w-4 mr-2" /> Contact
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRequestBank(bank)}
+                      className="flex-1 bg-primary text-white py-2 rounded-lg text-sm font-medium hover:bg-primary-dark cursor-pointer"
+                    >
+                      Request blood
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-grow min-h-[400px] lg:h-full relative bg-gray-100">
+            <MapContainer center={mapCenter} zoom={13} scrollWheelZoom className="w-full h-full">
+              <ChangeMapView center={mapCenter} />
+              <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+              {filteredBanks.map((bank) => (
+                <Marker key={bank.id} position={[bank.lat, bank.lng]} icon={getBankMarkerIcon(bank.status)}>
+                  <Popup>
+                    <div className="min-w-[180px]">
+                      <h3 className="font-bold text-sm mb-1">{bank.name}</h3>
+                      <p className="text-xs text-text-secondary mb-2 leading-tight">{bank.address}</p>
+                      <div className="flex flex-col gap-1.5 mt-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedContactBank(bank)}
+                          className="w-full border border-border text-text-primary py-1.5 rounded text-xs font-bold hover:bg-gray-50 flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Phone className="h-3.5 w-3.5" /> Contact
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRequestBank(bank)}
+                          className="w-full bg-primary text-white py-1.5 rounded text-xs font-bold hover:bg-primary-dark text-center cursor-pointer"
+                        >
+                          Request blood
+                        </button>
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+            </MapContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Contact Details Modal */}
+      <AnimatePresence>
+        {selectedContactBank && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedContactBank(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white/95 backdrop-blur-md border border-white/20 shadow-2xl rounded-2xl max-w-md w-full overflow-hidden p-6 relative z-10"
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedContactBank(null)}
+                className="absolute top-4 right-4 text-text-secondary hover:text-text-primary transition-colors p-1 rounded-full hover:bg-gray-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <div className="flex items-center gap-3 mb-6">
+                <div className="bg-primary/10 p-2.5 rounded-xl">
+                  <Phone className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-text-primary text-xl leading-tight">Contact Information</h3>
+                  <p className="text-text-secondary text-xs mt-0.5">Get in touch directly with the blood bank</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-primary-light p-4 rounded-xl border border-primary/10 mb-2">
+                  <span className="text-xs uppercase tracking-wider font-semibold text-primary">Blood Bank Partner</span>
+                  <h4 className="font-bold text-text-primary text-lg mt-0.5 leading-snug">{selectedContactBank.name}</h4>
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-border hover:border-gray-300 transition-colors">
+                  <a href={`tel:${selectedContactBank.phone}`} className="flex items-center gap-3 flex-grow cursor-pointer group">
+                    <div className="bg-white p-2 rounded-lg border border-border text-text-secondary group-hover:text-primary transition-colors">
+                      <Phone className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-text-secondary">Phone Number</p>
+                      <p className="font-bold text-text-primary text-sm group-hover:text-primary transition-colors truncate">{selectedContactBank.phone || 'N/A'}</p>
+                    </div>
+                  </a>
+                  {selectedContactBank.phone && (
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(selectedContactBank.phone, 'Phone')}
+                      className="p-2 text-text-secondary hover:text-primary transition-colors cursor-pointer"
+                      title="Copy Phone"
+                    >
+                      {copiedField === 'Phone' ? <Check className="h-4 w-4 text-accent" /> : <Copy className="h-4 w-4" />}
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-border hover:border-gray-300 transition-colors">
+                  <a href={`mailto:${selectedContactBank.email}`} className="flex items-center gap-3 flex-grow cursor-pointer group">
+                    <div className="bg-white p-2 rounded-lg border border-border text-text-secondary group-hover:text-primary transition-colors">
+                      <Mail className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-text-secondary">Email Address</p>
+                      <p className="font-bold text-text-primary text-sm group-hover:text-primary transition-colors truncate">{selectedContactBank.email || 'N/A'}</p>
+                    </div>
+                  </a>
+                  {selectedContactBank.email && (
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(selectedContactBank.email, 'Email')}
+                      className="p-2 text-text-secondary hover:text-primary transition-colors cursor-pointer"
+                      title="Copy Email"
+                    >
+                      {copiedField === 'Email' ? <Check className="h-4 w-4 text-accent" /> : <Copy className="h-4 w-4" />}
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-border hover:border-gray-300 transition-colors">
+                  <div className="flex items-center gap-3 flex-grow">
+                    <div className="bg-white p-2 rounded-lg border border-border text-text-secondary">
+                      <ShieldCheck className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-text-secondary">Government License Number</p>
+                      <p className="font-bold text-text-primary text-sm truncate">{selectedContactBank.licenseNumber || 'N/A'}</p>
+                    </div>
+                  </div>
+                  {selectedContactBank.licenseNumber && (
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(selectedContactBank.licenseNumber, 'License')}
+                      className="p-2 text-text-secondary hover:text-primary transition-colors cursor-pointer"
+                      title="Copy License"
+                    >
+                      {copiedField === 'License' ? <Check className="h-4 w-4 text-accent" /> : <Copy className="h-4 w-4" />}
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-border hover:border-gray-300 transition-colors">
+                  <div className="flex items-center gap-3 flex-grow">
+                    <div className="bg-white p-2 rounded-lg border border-border text-text-secondary">
+                      <MapPin className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-text-secondary">Physical Address</p>
+                      <p className="font-semibold text-text-primary text-xs leading-normal mt-0.5">{selectedContactBank.address || 'N/A'}</p>
+                    </div>
+                  </div>
+                  {selectedContactBank.address && (
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(selectedContactBank.address, 'Address')}
+                      className="p-2 text-text-secondary hover:text-primary transition-colors cursor-pointer"
+                      title="Copy Address"
+                    >
+                      {copiedField === 'Address' ? <Check className="h-4 w-4 text-accent" /> : <Copy className="h-4 w-4" />}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 pt-4 border-t border-border flex gap-3">
+                <a
+                  href={`tel:${selectedContactBank.phone}`}
+                  className="flex-1 bg-primary text-white text-center py-2.5 rounded-xl text-sm font-bold hover:bg-primary-dark transition-all flex items-center justify-center gap-2"
+                >
+                  <Phone className="h-4 w-4" /> Call Now
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setSelectedContactBank(null)}
+                  className="flex-1 border border-border text-text-primary py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 transition-all cursor-pointer"
+                >
+                  Close Window
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Request Blood Modal */}
+      <AnimatePresence>
+        {selectedRequestBank && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedRequestBank(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+
+            {!isLoggedIn ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-white/95 backdrop-blur-md border border-white/20 shadow-2xl rounded-2xl max-w-md w-full overflow-hidden p-6 relative z-10 text-center"
+              >
+                <button
+                  type="button"
+                  onClick={() => setSelectedRequestBank(null)}
+                  className="absolute top-4 right-4 text-text-secondary hover:text-text-primary transition-colors p-1 rounded-full hover:bg-gray-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+
+                <div className="mx-auto bg-amber-50 border border-amber-200 text-amber-600 p-3 rounded-full w-14 h-14 flex items-center justify-center mb-4 animate-pulse">
+                  <AlertCircle className="h-8 w-8" />
+                </div>
+
+                <h3 className="font-bold text-text-primary text-xl mb-2">Authentication Required</h3>
+                <p className="text-text-secondary text-sm leading-relaxed mb-6">
+                  To place a direct blood request with <span className="font-bold text-text-primary">{selectedRequestBank.name}</span>, you must first log in or register. This helps us secure patients' coordinates and coordinate effectively.
+                </p>
+
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedRequestBank(null);
+                      navigate('/login');
+                    }}
+                    className="w-full bg-primary text-white py-3 rounded-xl font-bold hover:bg-primary-dark transition-all shadow-sm cursor-pointer"
+                  >
+                    Log In as Requester / Donor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedRequestBank(null);
+                      navigate('/register');
+                    }}
+                    className="w-full border border-border text-text-primary py-3 rounded-xl font-bold hover:bg-gray-50 transition-all cursor-pointer"
+                  >
+                    Create a New Account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRequestBank(null)}
+                    className="w-full text-xs text-text-secondary hover:underline py-1 mt-2 cursor-pointer"
+                  >
+                    Cancel and Return
+                  </button>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-white/95 backdrop-blur-md border border-white/20 shadow-2xl rounded-2xl max-w-2xl w-full overflow-hidden relative z-10 flex flex-col max-h-[90vh]"
+              >
+                <button
+                  type="button"
+                  onClick={() => setSelectedRequestBank(null)}
+                  className="absolute top-4 right-4 text-text-secondary hover:text-text-primary transition-colors p-1 rounded-full hover:bg-gray-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+
+                <form onSubmit={handleRequestSubmit} className="flex flex-col h-full min-h-0">
+                  <div className="p-6 overflow-y-auto space-y-5 flex-grow min-h-0">
+                    <div className="bg-primary/5 p-4 rounded-xl border border-primary/10 flex items-center gap-3">
+                      <div className="bg-primary/10 p-2.5 rounded-lg shrink-0">
+                        <Sparkles className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-text-primary text-lg leading-tight">Request Blood</h4>
+                        <p className="text-text-secondary text-xs mt-0.5">Place a direct request to <span className="font-semibold text-text-primary">{selectedRequestBank.name}</span></p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Blood Group Required</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {BLOOD_GROUPS.map((bg) => (
+                            <button
+                              key={bg}
+                              type="button"
+                              onClick={() => setRequestForm(prev => ({ ...prev, bloodGroup: bg }))}
+                              className={`py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                                requestForm.bloodGroup === bg
+                                  ? 'bg-primary text-white border-primary shadow-sm scale-[1.03]'
+                                  : 'bg-white border-border text-text-secondary hover:border-primary hover:text-primary'
+                              }`}
+                            >
+                              {bg}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Units Required (350ml/unit)</label>
+                        <div className="flex items-center gap-4 py-2">
+                          <input
+                            type="range"
+                            min="1"
+                            max="10"
+                            value={requestForm.unitsRequired}
+                            onChange={(e) => setRequestForm(prev => ({ ...prev, unitsRequired: parseInt(e.target.value) }))}
+                            className="flex-grow accent-primary"
+                          />
+                          <span className="font-extrabold text-primary text-lg bg-primary-light px-3 py-1 rounded-lg border border-primary/10 w-12 text-center shrink-0">
+                            {requestForm.unitsRequired}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Delivery Mode</label>
+                        <div className="flex bg-gray-100 rounded-lg p-1 border border-border">
+                          {['Self-Collection', 'Delivery'].map((mode) => (
+                            <button
+                              key={mode}
+                              type="button; button"
+                              onClick={() => setRequestForm(prev => ({ ...prev, deliveryMode: mode }))}
+                              className={`flex-grow py-2 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                requestForm.deliveryMode === mode
+                                  ? 'bg-primary text-white shadow-sm'
+                                  : 'text-text-secondary hover:text-text-primary'
+                              }`}
+                            >
+                              {mode === 'Self-Collection' ? 'Self-Collection' : 'Delivery'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        {requestForm.deliveryMode === 'Self-Collection' ? (
+                          <div className="bg-amber-50/50 border border-amber-200/50 rounded-xl p-3 h-full flex flex-col justify-center">
+                            <div className="flex items-start gap-2">
+                              <MapPin className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs font-bold text-amber-800">Collection Point</p>
+                                <p className="text-[11px] text-text-secondary mt-0.5 leading-normal truncate">{selectedRequestBank.address}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Delivery Address</label>
+                            <input
+                              type="text"
+                              value={requestForm.deliveryAddress}
+                              onChange={(e) => setRequestForm(prev => ({ ...prev, deliveryAddress: e.target.value }))}
+                              placeholder="Hospital name or delivery address"
+                              className="w-full bg-white border border-border rounded-lg p-2 text-sm outline-none focus:border-primary transition-all"
+                              required
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Required Date</label>
+                        <input
+                          type="date"
+                          min={new Date().toISOString().split('T')[0]}
+                          value={requestForm.date}
+                          onChange={(e) => setRequestForm(prev => ({ ...prev, date: e.target.value }))}
+                          className="w-full bg-white border border-border rounded-lg p-2.5 text-sm outline-none focus:border-primary transition-all"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Preferred Time Slot</label>
+                        <div className="grid grid-cols-4 gap-1.5 max-h-[96px] overflow-y-auto p-1.5 border border-border rounded-lg bg-gray-50">
+                          {TIME_SLOTS.map((slot) => (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => setRequestForm(prev => ({ ...prev, timeSlot: slot }))}
+                              className={`py-1 px-1.5 text-[11px] font-bold rounded border transition-all cursor-pointer ${
+                                requestForm.timeSlot === slot
+                                  ? 'bg-primary text-white border-primary shadow-xs'
+                                  : 'bg-white border-border text-text-secondary hover:border-primary hover:text-primary'
+                              }`}
+                            >
+                              {slot}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border pt-4">
+                      <h5 className="font-bold text-text-primary text-sm mb-3 flex items-center gap-2">
+                        <ShieldCheck className="h-4 w-4 text-primary" /> Patient & Urgency Information
+                      </h5>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Patient Name (Optional)</label>
+                          <input
+                            type="text"
+                            value={requestForm.patientName}
+                            onChange={(e) => setRequestForm(prev => ({ ...prev, patientName: e.target.value }))}
+                            placeholder="e.g. John Doe"
+                            className="w-full bg-white border border-border rounded-lg p-2 text-sm outline-none focus:border-primary transition-all"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Patient Age</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="120"
+                            value={requestForm.patientAge}
+                            onChange={(e) => setRequestForm(prev => ({ ...prev, patientAge: e.target.value }))}
+                            placeholder="e.g. 42"
+                            className="w-full bg-white border border-border rounded-lg p-2 text-sm outline-none focus:border-primary transition-all"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Patient Gender</label>
+                          <div className="flex bg-gray-100 rounded-lg p-1 border border-border">
+                            {['Male', 'Female', 'Other'].map((g) => (
+                              <button
+                                key={g}
+                                type="button"
+                                onClick={() => setRequestForm(prev => ({ ...prev, patientGender: g }))}
+                                className={`flex-grow py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                  requestForm.patientGender === g
+                                    ? 'bg-white text-text-primary shadow-xs'
+                                    : 'text-text-secondary hover:text-text-primary'
+                                }`}
+                              >
+                                {g}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Contact Phone</label>
+                          <input
+                            type="tel"
+                            value={requestForm.contactNumber}
+                            onChange={(e) => setRequestForm(prev => ({ ...prev, contactNumber: e.target.value }))}
+                            placeholder="Requester Phone Number"
+                            className="w-full bg-white border border-border rounded-lg p-2 text-sm outline-none focus:border-primary transition-all"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Urgency Level</label>
+                          <div className="flex bg-gray-100 rounded-lg p-1 border border-border">
+                            {['Normal', 'Urgent', 'Emergency'].map((urg) => (
+                              <button
+                                key={urg}
+                                type="button"
+                                onClick={() => setRequestForm(prev => ({ ...prev, urgencyLevel: urg }))}
+                                className={`flex-grow py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                  requestForm.urgencyLevel === urg
+                                    ? urg === 'Emergency'
+                                      ? 'bg-critical text-white shadow-xs'
+                                      : urg === 'Urgent'
+                                      ? 'bg-warning text-white shadow-xs'
+                                      : 'bg-white text-text-primary shadow-xs'
+                                    : 'text-text-secondary hover:text-text-primary'
+                                }`}
+                              >
+                                {urg}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-6 border-t border-border flex gap-3 bg-gray-50 shrink-0">
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="flex-grow bg-primary text-white py-3 rounded-xl font-bold hover:bg-primary-dark disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                          Processing Request...
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="h-5 w-5" /> Book Appointment & Request
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRequestBank(null)}
+                      className="px-6 border border-border text-text-primary rounded-xl font-semibold hover:bg-gray-100 transition-all cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            )}
+          </div>
+        )}
+      </AnimatePresence>
+
+      <Footer />
+    </div>
+  );
+};
+
+export default FindBlood;
+
