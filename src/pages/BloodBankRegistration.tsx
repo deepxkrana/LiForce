@@ -1,10 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import Navbar from '../components/Navbar';
 import { ArrowRight, CheckCircle, Mail, Hospital } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { API_URL } from '../lib/api';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+
+const createCustomIcon = (color: string) =>
+  L.divIcon({
+    className: 'my-custom-pin',
+    iconAnchor: [0, 12],
+    popupAnchor: [0, -24],
+    html: `<span style="background-color:${color};width:24px;height:24px;display:block;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.15);" />`,
+  });
+
+const iconRed = createCustomIcon('#E24B4A');
+
+const LocationPicker = ({ position, setPosition }: any) => {
+  useMapEvents({
+    click(e) {
+      setPosition([e.latlng.lat, e.latlng.lng]);
+    },
+  });
+  return position ? <Marker position={position} icon={iconRed} /> : null;
+};
 
 const BloodBankRegistration: React.FC = () => {
   const [step, setStep] = useState<1 | 2>(1);
@@ -14,12 +34,22 @@ const BloodBankRegistration: React.FC = () => {
     password: '',
     licenseNumber: '',
     phone: '',
-    address: ''
+    address: '',
+    latitude: undefined as number | undefined,
+    longitude: undefined as number | undefined
   });
   const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem('liforce_token');
+    const role = localStorage.getItem('liforce_role');
+    if (token && role) {
+      navigate(role === 'bloodbank' ? '/dashboard/bloodbank' : '/dashboard/donor', { replace: true });
+    }
+  }, [navigate]);
 
   const handleInitiate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,8 +121,7 @@ const BloodBankRegistration: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col pt-20">
-      <Navbar />
-      
+            
       <div className="flex-grow flex items-center justify-center p-4 py-10">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
@@ -199,6 +228,20 @@ const BloodBankRegistration: React.FC = () => {
                       placeholder="Street, Sector, City, Pincode"
                       rows={2}
                     ></textarea>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-text-primary mb-2">Pin Blood Bank Location</label>
+                    <p className="text-xs text-text-secondary mb-3">Click on the map to set your exact physical location so nearby donors can easily navigate to you.</p>
+                    <div className="h-64 w-full rounded-xl overflow-hidden border border-border">
+                      <MapContainer center={[30.7333, 76.7794]} zoom={11} scrollWheelZoom={true} className="w-full h-full">
+                        <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+                        <LocationPicker 
+                          position={formData.latitude ? [formData.latitude, formData.longitude] : null} 
+                          setPosition={(pos: any) => setFormData({...formData, latitude: pos[0], longitude: pos[1]})} 
+                        />
+                      </MapContainer>
+                    </div>
                   </div>
 
                   <button 

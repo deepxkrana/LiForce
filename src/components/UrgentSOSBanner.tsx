@@ -13,7 +13,7 @@ interface Emergency {
   patientName: string;
   bloodGroup: string;
   unitsRequired: number;
-  hospitalName: string;
+  hospitalAddress: string;
   city?: string;
   urgency: string;
   patientGender?: string;
@@ -26,7 +26,7 @@ const PRESET_EMERGENCIES: Emergency[] = [
     patientName: "Mohan Singh",
     bloodGroup: "O-",
     unitsRequired: 2,
-    hospitalName: "PGIMER",
+    hospitalAddress: "PGIMER",
     city: "Chandigarh",
     urgency: "Critical"
   },
@@ -35,7 +35,7 @@ const PRESET_EMERGENCIES: Emergency[] = [
     patientName: "Aarav Sharma",
     bloodGroup: "B+",
     unitsRequired: 3,
-    hospitalName: "Fortis Hospital",
+    hospitalAddress: "Fortis Hospital",
     city: "Mohali",
     urgency: "High"
   },
@@ -44,7 +44,7 @@ const PRESET_EMERGENCIES: Emergency[] = [
     patientName: "Priya Patel",
     bloodGroup: "A-",
     unitsRequired: 4,
-    hospitalName: "AIIMS",
+    hospitalAddress: "AIIMS",
     city: "New Delhi",
     urgency: "Critical"
   },
@@ -53,7 +53,7 @@ const PRESET_EMERGENCIES: Emergency[] = [
     patientName: "Rohan Kapoor",
     bloodGroup: "AB+",
     unitsRequired: 1,
-    hospitalName: "KEM Hospital",
+    hospitalAddress: "KEM Hospital",
     city: "Mumbai",
     urgency: "Normal"
   },
@@ -62,7 +62,7 @@ const PRESET_EMERGENCIES: Emergency[] = [
     patientName: "Sneha Reddy",
     bloodGroup: "O+",
     unitsRequired: 3,
-    hospitalName: "Apollo Hospital",
+    hospitalAddress: "Apollo Hospital",
     city: "Bengaluru",
     urgency: "High"
   }
@@ -106,7 +106,7 @@ const UrgentSOSBanner: React.FC = () => {
               patientName: item.patientName || "Emergency Patient",
               bloodGroup: item.bloodGroup,
               unitsRequired: item.unitsRequired || 1,
-              hospitalName: item.hospitalName,
+              hospitalAddress: item.hospitalAddress,
               city: item.city || "Nearby",
               urgency: item.urgency || "Critical"
             }));
@@ -306,7 +306,7 @@ const UrgentSOSBanner: React.FC = () => {
                       <span className="font-semibold uppercase tracking-wider text-[#C0392B] mr-1.5">
                         [{activeReq.urgency}]
                       </span>
-                      Urgent: {activeReq.bloodGroup} blood needed at {activeReq.hospitalName}
+                      Urgent: {activeReq.bloodGroup} blood needed at {activeReq.hospitalAddress}
                       {activeReq.city ? `, ${activeReq.city}` : ''} — {activeReq.unitsRequired} {activeReq.unitsRequired === 1 ? 'unit' : 'units'} required
                     </p>
                     <button 
@@ -430,7 +430,7 @@ const UrgentSOSBanner: React.FC = () => {
                   <div className="bg-red-50/50 border border-red-100 rounded-2xl p-4 mb-6 flex flex-col">
                     <span className="text-xs font-semibold text-[#E24B4A] uppercase tracking-wider mb-1">SOS Alert details</span>
                     <span className="font-bold text-sm text-text-primary">
-                      {activeReq?.bloodGroup} Blood at {activeReq?.hospitalName}
+                      {activeReq?.bloodGroup} Blood at {activeReq?.hospitalAddress}
                     </span>
                     <span className="text-xs text-text-secondary mt-1">
                       Required units: {activeReq?.unitsRequired} unit(s) • Status: {activeReq?.urgency}
@@ -489,7 +489,7 @@ const UrgentSOSBanner: React.FC = () => {
                         <span className="text-[10px] font-bold text-[#E24B4A] uppercase tracking-wider block mb-1">SOS LOCATION</span>
                         <h4 className="font-bold text-text-primary text-base flex items-center">
                           <MapPin className="w-4 h-4 text-[#E24B4A] mr-1 flex-shrink-0" />
-                          {activeReq?.hospitalName} {activeReq?.city ? `, ${activeReq?.city}` : ''}
+                          {activeReq?.hospitalAddress} {activeReq?.city ? `, ${activeReq?.city}` : ''}
                         </h4>
                       </div>
                       <span className="px-2 py-0.5 bg-[#FDEDEC] text-[#E24B4A] text-[10px] font-extrabold rounded-full uppercase">

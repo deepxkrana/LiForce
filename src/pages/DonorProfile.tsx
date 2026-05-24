@@ -2,8 +2,6 @@ import React from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { MapPin, Calendar, ShieldCheck, MessageSquare, AlertCircle, Droplet, Clock, Flame, Trophy } from 'lucide-react';
-import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
 import { API_URL } from '../lib/api';
 import { useChat } from '../context/ChatContext';
 
@@ -33,6 +31,7 @@ const DonorProfile: React.FC = () => {
   }, [token]);
 
   const isOwnProfile = !id || id === 'me' || (donorData && loggedInUserId === donorData.id);
+  const loggedInUserRole = localStorage.getItem('liforce_role');
 
   React.useEffect(() => {
     const fetchProfile = async () => {
@@ -57,8 +56,7 @@ const DonorProfile: React.FC = () => {
   if (!donorData) {
     return (
       <div className="min-h-screen bg-background flex flex-col pt-20 text-center animate-pulse">
-        <Navbar />
-        <p className="mt-20 text-text-secondary">Loading profile...</p>
+                <p className="mt-20 text-text-secondary">Loading profile...</p>
       </div>
     );
   }
@@ -72,11 +70,11 @@ const DonorProfile: React.FC = () => {
   if (lastDonatedAt) {
     const lastDate = new Date(lastDonatedAt);
     const nextDate = new Date(lastDate);
-    nextDate.setDate(nextDate.getDate() + 90);
+    nextDate.setDate(nextDate.getDate() + 56);
     const today = new Date();
     const diffTime = nextDate.getTime() - today.getTime();
     daysUntilEligible = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-    eligibilityPercent = Math.min(100, Math.max(0, ((90 - daysUntilEligible) / 90) * 100));
+    eligibilityPercent = Math.min(100, Math.max(0, ((56 - daysUntilEligible) / 56) * 100));
     nextDateStr = nextDate.toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' });
   } else {
     daysUntilEligible = 0;
@@ -108,12 +106,14 @@ const DonorProfile: React.FC = () => {
   }
   
   // Add Join Activity
-  recentActivity.push({
-    id: 'join',
-    action: 'Joined LiForce',
-    location: donorData.city || 'App',
-    date: new Date(donorData.createdAt).toLocaleDateString(),
-  });
+  if (donorData?.createdAt) {
+    recentActivity.push({
+      id: 'join',
+      action: 'Joined LiForce',
+      location: donorData.city || 'App',
+      date: new Date(donorData.createdAt).toLocaleDateString(),
+    });
+  }
 
   const progressPercentage = eligibilityPercent;
 
@@ -122,6 +122,7 @@ const DonorProfile: React.FC = () => {
     bloodGroup: donorData.bloodGroup,
     city: donorData.city || 'Unknown',
     age: donorData.age || 28,
+    gender: donorData.gender || 'Unknown',
     isVerified: true,
     stats: {
       donations: donationsCount,
@@ -131,7 +132,7 @@ const DonorProfile: React.FC = () => {
     },
     eligibility: {
       daysLeft: daysUntilEligible,
-      totalDays: 90,
+      totalDays: 56,
       nextDate: nextDateStr
     },
     badges: badges,
@@ -140,8 +141,7 @@ const DonorProfile: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col pt-20">
-      <Navbar />
-      
+            
       <div className="flex-grow max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
@@ -173,7 +173,7 @@ const DonorProfile: React.FC = () => {
                 )}
               </div>
               
-              {!isOwnProfile && (
+              {!isOwnProfile && loggedInUserRole !== 'bloodbank' && (
                 <div className="flex gap-3 mt-6 md:mt-0 w-full md:w-auto">
                   <button
                     type="button"
@@ -205,6 +205,12 @@ const DonorProfile: React.FC = () => {
                 <span className="flex items-center"><MapPin className="w-4 h-4 mr-1" /> {donor.city}</span>
                 <span className="hidden md:inline">•</span>
                 <span className="flex items-center"><Calendar className="w-4 h-4 mr-1" /> {donor.age} years old</span>
+                {donor.gender && donor.gender !== 'Unknown' && (
+                  <>
+                    <span className="hidden md:inline">•</span>
+                    <span className="flex items-center text-text-secondary">{donor.gender}</span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -287,7 +293,7 @@ const DonorProfile: React.FC = () => {
                         ></div>
                       </div>
                       <p className="text-xs text-text-secondary leading-relaxed">
-                        To protect your health, we require a 90-day waiting period between blood donations.
+                        To protect your health, we require a 56-day waiting period between blood donations.
                       </p>
                     </div>
                   )}
@@ -302,10 +308,7 @@ const DonorProfile: React.FC = () => {
               {/* Column 2: Badges Grid */}
               <div className="bg-surface border border-border p-6 rounded-2xl shadow-sm h-full">
                 <div className="flex justify-between items-center mb-6">
-                  <h3 className="font-bold text-lg text-text-primary flex items-center">
-                    <Trophy className="w-5 h-5 text-text-secondary mr-2" /> Badges Earned
-                  </h3>
-                  <Link to="/leaderboard" className="text-sm font-bold text-primary hover:underline">View all</Link>
+                  <h3 className="text-xl font-bold text-text-primary flex items-center"><Trophy className="w-5 h-5 mr-2 text-text-secondary" /> Badges Earned</h3>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   {donor.badges.map(badge => (
@@ -351,8 +354,7 @@ const DonorProfile: React.FC = () => {
         </motion.div>
       </div>
       
-      <Footer />
-    </div>
+          </div>
   );
 };
 

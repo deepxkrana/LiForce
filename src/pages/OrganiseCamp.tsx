@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
 import { API_URL } from '../lib/api';
 import { useToast } from '../components/ToastProvider';
 import { 
@@ -22,6 +20,7 @@ const OrganiseCamp: React.FC = () => {
   const [campTime, setCampTime] = useState('');
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
+  const [capacity, setCapacity] = useState('50');
   const [isLoading, setIsLoading] = useState(false);
   const [isPageLoading, setIsPageLoading] = useState(true);
   
@@ -72,7 +71,8 @@ const OrganiseCamp: React.FC = () => {
           title,
           date: combinedDateTime.toISOString(),
           location,
-          description: description.trim() || undefined
+          description: description.trim() || undefined,
+          capacity
         })
       });
 
@@ -94,19 +94,16 @@ const OrganiseCamp: React.FC = () => {
   if (isPageLoading) {
     return (
       <div className="min-h-screen bg-background flex flex-col pt-20">
-        <Navbar />
-        <div className="flex-grow flex items-center justify-center">
+                <div className="flex-grow flex items-center justify-center">
           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
         </div>
-        <Footer />
-      </div>
+              </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-background flex flex-col pt-20">
-      <Navbar />
-      
+            
       <div className="flex-grow max-w-4xl w-full mx-auto px-4 py-12">
         <button 
           onClick={() => navigate(-1)}
@@ -190,6 +187,22 @@ const OrganiseCamp: React.FC = () => {
                     onChange={(e) => setLocation(e.target.value)}
                     required
                     placeholder="e.g. Sector 17 Plaza, Near Fountain, Chandigarh"
+                    className="w-full px-4 py-3.5 rounded-xl border border-border bg-background outline-none transition-all focus:border-accent text-text-primary"
+                  />
+                </div>
+
+                {/* Capacity */}
+                <div>
+                  <label className="block text-sm font-extrabold text-text-primary mb-2.5 flex items-center gap-1.5">
+                    <User className="w-4 h-4 text-accent" /> Total Attendee Capacity
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={capacity}
+                    onChange={(e) => setCapacity(e.target.value)}
+                    required
+                    placeholder="e.g. 50"
                     className="w-full px-4 py-3.5 rounded-xl border border-border bg-background outline-none transition-all focus:border-accent text-text-primary"
                   />
                 </div>
@@ -284,8 +297,7 @@ const OrganiseCamp: React.FC = () => {
         </div>
       </div>
 
-      <Footer />
-    </div>
+          </div>
   );
 };
 

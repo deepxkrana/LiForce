@@ -1,14 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Activity, Shield, CheckCircle, ArrowRight, ArrowLeft, Trophy } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Link } from 'react-router-dom';
-import Navbar from '../components/Navbar';
+import { Link, useNavigate } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
 import { API_URL } from '../lib/api';
 import { useToast } from '../components/ToastProvider';
+
+const createCustomIcon = (color: string) =>
+  L.divIcon({
+    className: 'my-custom-pin',
+    iconAnchor: [0, 12],
+    popupAnchor: [0, -24],
+    html: `<span style="background-color:${color};width:24px;height:24px;display:block;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.15);" />`,
+  });
+
+const iconRed = createCustomIcon('#E24B4A');
+
+const LocationPicker = ({ position, setPosition }: any) => {
+  useMapEvents({
+    click(e) {
+      setPosition([e.latlng.lat, e.latlng.lng]);
+    },
+  });
+  return position ? <Marker position={position} icon={iconRed} /> : null;
+};
 
 const formSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
@@ -19,6 +39,8 @@ const formSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
   city: z.string().min(2, "City is required"),
   pincode: z.string().min(6, "Valid pincode is required"),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
   
   bloodGroup: z.string().min(1, "Please select your blood group"),
   lastDonation: z.string().optional(),
@@ -51,8 +73,17 @@ const DonorRegistration: React.FC = () => {
   const [otp, setOtp] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [formDataCache, setFormDataCache] = useState<FormData | null>(null);
+  const navigate = useNavigate();
 
-  const { register, handleSubmit, formState: { errors }, watch, setValue, trigger } = useForm<FormData>({
+  useEffect(() => {
+    const token = localStorage.getItem('liforce_token');
+    const role = localStorage.getItem('liforce_role');
+    if (token && role) {
+      navigate(role === 'bloodbank' ? '/dashboard/bloodbank' : '/dashboard/donor', { replace: true });
+    }
+  }, [navigate]);
+
+  const { register, handleSubmit, formState: { errors }, watch, setValue, trigger, getValues } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       healthConditions: [],
@@ -88,6 +119,10 @@ const DonorRegistration: React.FC = () => {
   };
 
   const onSubmit = async (data: FormData) => {
+    if (currentStep !== 3) {
+      nextStep();
+      return;
+    }
     try {
       setIsLoading(true);
       console.log("Initiating registration:", data);
@@ -107,8 +142,8 @@ const DonorRegistration: React.FC = () => {
       if (successData.devOtp) {
         setOtp(successData.devOtp);
       }
-      
-      setFormDataCache(data);
+      const formData = getValues();
+      setFormDataCache({...formData});
       setCurrentStep(4); // Move to OTP step
       setIsLoading(false);
     } catch (error: any) {
@@ -134,7 +169,11 @@ const DonorRegistration: React.FC = () => {
           password: formDataCache.password,
           name: formDataCache.fullName,
           bloodGroup: formDataCache.bloodGroup,
-          userType: 'donor'
+          userType: 'donor',
+          age: formDataCache.age,
+          gender: formDataCache.gender,
+          latitude: formDataCache.latitude,
+          longitude: formDataCache.longitude
         })
       });
 
@@ -156,7 +195,9 @@ const DonorRegistration: React.FC = () => {
             phone: formDataCache.phone,
             city: formDataCache.city,
             maxTravelDistanceKm: formDataCache.maxDistance,
-            notificationsEnabled: formDataCache.notifications.length > 0
+            notificationsEnabled: formDataCache.notifications.length > 0,
+            latitude: formDataCache.latitude,
+            longitude: formDataCache.longitude
           })
         });
       }
@@ -186,6 +227,9 @@ const DonorRegistration: React.FC = () => {
   const maxDistance = watch('maxDistance');
   const availability = watch('availability');
   const profileVisibility = watch('profileVisibility');
+  const lat = watch('latitude');
+  const lng = watch('longitude');
+  const currentCoords: [number, number] | null = lat !== undefined && lng !== undefined ? [lat, lng] : null;
 
   const toggleArrayItem = (field: 'healthConditions' | 'notifications', item: string) => {
     const currentArray = watch(field) || [];
@@ -205,8 +249,7 @@ const DonorRegistration: React.FC = () => {
   if (isSuccess) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-        <Navbar />
-        <motion.div 
+                <motion.div 
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           className="bg-surface p-10 rounded-2xl border border-border shadow-lg text-center max-w-lg w-full mt-20"
@@ -242,8 +285,7 @@ const DonorRegistration: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col pt-20">
-      <Navbar />
-      
+            
       <div className="flex-grow max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 flex flex-col lg:flex-row gap-10">
         
         {/* Left Column - Form */}
@@ -254,14 +296,14 @@ const DonorRegistration: React.FC = () => {
           {/* Progress Bar */}
           <div className="mb-10">
             <div className="flex justify-between relative">
-              <div className="absolute top-1/2 left-0 w-full h-1 bg-border -z-10 -translate-y-1/2 rounded-full"></div>
+              <div className="absolute top-1/2 left-0 w-full h-1 bg-border z-0 -translate-y-1/2 rounded-full"></div>
               <div 
-                className="absolute top-1/2 left-0 h-1 bg-primary -z-10 -translate-y-1/2 rounded-full transition-all duration-300"
+                className="absolute top-1/2 left-0 h-1 bg-primary z-0 -translate-y-1/2 rounded-full transition-all duration-300"
                 style={{ width: `${((currentStep - 1) / (STEPS.length - 1)) * 100}%` }}
               ></div>
               
               {STEPS.map((step) => (
-                <div key={step.id} className="flex flex-col items-center">
+                <div key={step.id} className="flex flex-col items-center z-10 relative">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-4 border-surface transition-colors duration-300 ${
                     currentStep >= step.id ? 'bg-primary text-white' : 'bg-gray-200 text-text-secondary'
                   }`}>
@@ -276,7 +318,7 @@ const DonorRegistration: React.FC = () => {
           </div>
 
           {/* Form Area */}
-          <form onSubmit={handleSubmit(onSubmit)}>
+          <form onSubmit={(e) => e.preventDefault()}>
             <AnimatePresence mode="wait">
               {currentStep === 1 && (
                 <motion.div
@@ -517,6 +559,23 @@ const DonorRegistration: React.FC = () => {
                   </div>
 
                   <div>
+                    <label className="block text-sm font-bold text-text-primary mb-2">Pin Your Location</label>
+                    <p className="text-xs text-text-secondary mb-3">Click on the map to set your precise location so nearby people can find you.</p>
+                    <div className="h-64 w-full rounded-xl overflow-hidden border border-border">
+                      <MapContainer center={[30.7333, 76.7794]} zoom={11} scrollWheelZoom={true} className="w-full h-full z-0 relative">
+                        <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+                        <LocationPicker 
+                          position={currentCoords} 
+                          setPosition={(pos: any) => {
+                            setValue('latitude', pos[0]);
+                            setValue('longitude', pos[1]);
+                          }} 
+                        />
+                      </MapContainer>
+                    </div>
+                  </div>
+
+                  <div>
                     <div className="flex justify-between mb-2">
                       <label className="text-sm font-bold text-text-primary">Maximum Travel Distance</label>
                       <span className="text-sm font-bold text-primary">{maxDistance} km</span>
@@ -604,6 +663,7 @@ const DonorRegistration: React.FC = () => {
               
               {currentStep < 3 ? (
                 <button 
+                  key="btn-next"
                   type="button" 
                   onClick={nextStep}
                   className="px-8 py-3 rounded-lg bg-primary text-white font-bold hover:bg-primary-dark transition-colors flex items-center shadow-sm"
@@ -612,7 +672,9 @@ const DonorRegistration: React.FC = () => {
                 </button>
               ) : currentStep === 3 ? (
                 <button 
-                  type="submit"
+                  key="btn-submit"
+                  type="button"
+                  onClick={handleSubmit(onSubmit)}
                   disabled={isLoading}
                   className="px-8 py-3 rounded-lg bg-accent text-white font-bold hover:bg-emerald-600 transition-colors flex items-center shadow-sm disabled:opacity-50"
                 >
@@ -620,6 +682,7 @@ const DonorRegistration: React.FC = () => {
                 </button>
               ) : (
                 <button 
+                  key="btn-verify"
                   type="button"
                   onClick={verifyOTP}
                   disabled={isLoading || otp.length !== 6}

@@ -5,8 +5,7 @@ import * as z from 'zod';
 import { motion } from 'framer-motion';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
-import { AlertCircle, Send, MapPin, Activity, Navigation } from 'lucide-react';
-import Navbar from '../components/Navbar';
+import { AlertCircle, Send, MapPin, Activity, Navigation, Building2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Link, useLocation } from 'react-router-dom';
 import { API_URL } from '../lib/api';
@@ -19,9 +18,10 @@ const formSchema = z.object({
   patientAge: z.string().refine(val => { const parsed = parseInt(val); return !isNaN(parsed) && parsed > 0 && parsed <= 125; }, "Please enter a valid age (1-125)"),
   bloodGroup: z.string().min(1, "Please select a blood group"),
   unitsRequired: z.string().refine(val => parseInt(val) > 0, "At least 1 unit is required"),
-  hospitalName: z.string().min(2, "Hospital name/address is required"),
+  hospitalAddress: z.string().min(2, "Hospital name/address is required"),
   contactNumber: z.string().min(10, "Valid contact number is required"),
   urgencyLevel: z.enum(["Critical", "Urgent", "Planned"]),
+  requiredWithin: z.string().min(1, "Please select required timeframe"),
   notes: z.string().optional(),
 });
 
@@ -45,7 +45,7 @@ const createStatusIcon = (status: string) => {
 const EmergencyRequest: React.FC = () => {
   const location = useLocation();
   const { showToast } = useToast();
-  const hospitalFromState = (location.state as { hospitalName?: string })?.hospitalName;
+  const hospitalFromState = (location.state as { hospitalAddress?: string })?.hospitalAddress;
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [matchedDonors, setMatchedDonors] = useState<any[]>([]);
@@ -56,9 +56,10 @@ const EmergencyRequest: React.FC = () => {
     defaultValues: {
       urgencyLevel: "Critical",
       unitsRequired: "1",
-      hospitalName: hospitalFromState || "",
+      hospitalAddress: hospitalFromState || "",
       patientGender: "",
       patientAge: "",
+      requiredWithin: "24",
     }
   });
 
@@ -66,7 +67,7 @@ const EmergencyRequest: React.FC = () => {
   const urgencyLevel = watch('urgencyLevel');
 
   useEffect(() => {
-    if (hospitalFromState) setValue('hospitalName', hospitalFromState);
+    if (hospitalFromState) setValue('hospitalAddress', hospitalFromState);
   }, [hospitalFromState, setValue]);
 
   // Simulate auto-refresh of donors
@@ -87,9 +88,13 @@ const EmergencyRequest: React.FC = () => {
       }
       setIsSearching(true);
       try {
+        const token = localStorage.getItem('liforce_token');
+        const headers: any = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         const response = await fetch(`${API_URL}/match/emergency`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             bloodGroup,
             latitude: 30.7333, // Default to Chandigarh center for now
@@ -133,6 +138,10 @@ const EmergencyRequest: React.FC = () => {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
+      const now = new Date();
+      const requiredHours = parseInt(data.requiredWithin);
+      now.setHours(now.getHours() + requiredHours);
+
       const response = await fetch(`${API_URL}/emergencies`, {
         method: 'POST',
         headers,
@@ -140,6 +149,7 @@ const EmergencyRequest: React.FC = () => {
           ...data,
           latitude: 30.7333,
           longitude: 76.7794,
+          requiredDate: now.toISOString(),
         })
       });
       
@@ -173,8 +183,7 @@ const EmergencyRequest: React.FC = () => {
   if (isSubmitted) {
     return (
       <div className="min-h-screen flex flex-col bg-background pt-20">
-        <Navbar />
-        <div className="flex-grow flex items-center justify-center p-4">
+                <div className="flex-grow flex items-center justify-center p-4">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -211,8 +220,7 @@ const EmergencyRequest: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background pt-20">
-      <Navbar />
-      
+            
       {/* Thin Red Top Banner */}
       <div className="bg-critical text-white py-2 px-4 text-center text-sm font-bold flex items-center justify-center shadow-md z-10 relative">
         <span className="flex h-2 w-2 mr-2">
@@ -320,8 +328,8 @@ const EmergencyRequest: React.FC = () => {
                 <div className="relative">
                   <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-text-secondary" />
                   <input 
-                    {...register('hospitalName')} 
-                    className={`w-full pl-12 pr-4 py-3 rounded-lg border ${errors.hospitalName ? 'border-critical' : 'border-border focus:border-critical'} bg-background outline-none transition-colors`}
+                    {...register('hospitalAddress')} 
+                    className={`w-full pl-12 pr-4 py-3 rounded-lg border ${errors.hospitalAddress ? 'border-critical' : 'border-border focus:border-critical'} bg-background outline-none transition-colors`}
                     placeholder="Search hospital or enter address"
                   />
                   <button
@@ -342,28 +350,48 @@ const EmergencyRequest: React.FC = () => {
                     <Navigation className="h-4 w-4" />
                   </button>
                 </div>
-                {errors.hospitalName && <p className="text-critical text-xs mt-1">{errors.hospitalName.message}</p>}
+                {errors.hospitalAddress && <p className="text-critical text-xs mt-1">{errors.hospitalAddress.message}</p>}
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-text-primary mb-3">Urgency Level</label>
-                <div className="flex bg-background rounded-lg border border-border p-1">
-                  {['Critical', 'Urgent', 'Planned'].map(level => (
-                    <button
-                      key={level}
-                      type="button"
-                      onClick={() => setValue('urgencyLevel', level as any)}
-                      className={`flex-1 py-3 rounded-md text-sm font-bold transition-all ${
-                        urgencyLevel === level 
-                          ? level === 'Critical' ? 'bg-critical text-white shadow-md' : 
-                            level === 'Urgent' ? 'bg-warning text-white shadow-md' : 
-                            'bg-surface text-text-primary shadow-md border border-border'
-                          : 'text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      {level}
-                    </button>
-                  ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-bold text-text-primary mb-3">Urgency Level</label>
+                  <div className="flex bg-background rounded-lg border border-border p-1">
+                    {['Critical', 'Urgent', 'Planned'].map(level => (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => setValue('urgencyLevel', level as any)}
+                        className={`flex-1 py-3 rounded-md text-sm font-bold transition-all ${
+                          urgencyLevel === level 
+                            ? level === 'Critical' ? 'bg-critical text-white shadow-md' : 
+                              level === 'Urgent' ? 'bg-warning text-white shadow-md' : 
+                              'bg-surface text-text-primary shadow-md border border-border'
+                            : 'text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        {level}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-text-primary mb-3">Required Within</label>
+                  <select 
+                    {...register('requiredWithin')} 
+                    className={`w-full px-4 py-3.5 rounded-lg border ${errors.requiredWithin ? 'border-critical' : 'border-border focus:border-critical'} bg-background outline-none transition-colors`}
+                  >
+                    <option value="1">Within 1 Hour</option>
+                    <option value="2">Within 2 Hours</option>
+                    <option value="3">Within 3 Hours</option>
+                    <option value="6">Within 6 Hours</option>
+                    <option value="12">Within 12 Hours</option>
+                    <option value="24">Within 1 Day</option>
+                    <option value="48">Within 2 Days</option>
+                    <option value="72">Within 3 Days</option>
+                    <option value="168">Within 1 Week</option>
+                  </select>
+                  {errors.requiredWithin && <p className="text-critical text-xs mt-1">{errors.requiredWithin.message}</p>}
                 </div>
               </div>
 
@@ -449,11 +477,12 @@ const EmergencyRequest: React.FC = () => {
                 <div key={donor.id} className="flex items-center justify-between p-3 rounded-xl border border-border bg-background hover:border-[#F5B7B1] transition-colors">
                   <div className="flex items-center">
                     <div className="w-10 h-10 rounded-full bg-primary text-white font-bold flex items-center justify-center mr-3 shrink-0">
-                      {donor.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
+                      {donor.type === 'BloodBank' ? <Building2 className="w-5 h-5" /> : donor.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
                     </div>
                     <div>
                       <h4 className="font-bold text-text-primary text-sm">{donor.name}</h4>
                       <div className="flex items-center text-xs text-text-secondary mt-0.5">
+                        {donor.type === 'BloodBank' && <span className="font-bold text-accent mr-2">Blood Bank</span>}
                         <span className="font-bold text-primary mr-2">{donor.group}</span>
                         <span>{donor.distance}</span>
                       </div>

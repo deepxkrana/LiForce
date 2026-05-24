@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import type { Variants } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { ArrowRight, RefreshCw } from 'lucide-react';
 import { API_URL } from '../lib/api';
@@ -55,7 +56,7 @@ const LiveBloodAvailability: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const container = {
+  const container: Variants = {
     hidden: { opacity: 0 },
     show: {
       opacity: 1,
@@ -63,9 +64,9 @@ const LiveBloodAvailability: React.FC = () => {
     }
   };
 
-  const item = {
+  const item: Variants = {
     hidden: { opacity: 0, scale: 0.95 },
-    show: { opacity: 1, scale: 1, transition: { type: 'spring', stiffness: 300, damping: 20 } }
+    show: { opacity: 1, scale: 1, transition: { type: 'spring' as const, stiffness: 300, damping: 20 } }
   };
 
   return (

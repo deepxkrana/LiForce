@@ -1,13 +1,29 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { UserPlus, HeartHandshake, Trophy } from 'lucide-react';
+import { UserPlus, HeartHandshake, Trophy, AlertCircle } from 'lucide-react';
 
 const HowItWorks: React.FC = () => {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem('liforce_token');
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload && payload.id) {
+          setIsLoggedIn(true);
+        }
+      } catch (e) {}
+    }
+  }, []);
+
   const steps = [
     {
-      icon: <UserPlus className="h-8 w-8 text-primary" />,
-      title: 'Register as a donor',
-      description: 'Sign up in minutes. Tell us your blood group, location, and availability to help others.'
+      icon: isLoggedIn ? <AlertCircle className="h-8 w-8 text-primary" /> : <UserPlus className="h-8 w-8 text-primary" />,
+      title: isLoggedIn ? 'Request for blood' : 'Register as a donor',
+      description: isLoggedIn
+        ? 'Post an emergency request in seconds. Specify the required blood group, hospital location, and urgency.'
+        : 'Sign up in minutes. Tell us your blood group, location, and availability to help others.'
     },
     {
       icon: <HeartHandshake className="h-8 w-8 text-primary" />,

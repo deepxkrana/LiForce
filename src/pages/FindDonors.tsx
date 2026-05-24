@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import { Search, MapPin, Phone, Navigation, X, Mail, Sparkles, Copy, Check, AlertCircle, ShieldCheck } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
+import { Search, MapPin, Phone, Navigation, X, Mail, Copy, Check, ShieldCheck } from 'lucide-react';
 import { useToast } from '../components/ToastProvider';
 import { API_URL } from '../lib/api';
 import L from 'leaflet';
@@ -16,13 +16,10 @@ const createCustomIcon = (color: string) =>
   });
 
 const iconGood = createCustomIcon('#1D9E75');
+const iconWarning = createCustomIcon('#E67E22');
 const iconCritical = createCustomIcon('#E24B4A');
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
-const TIME_SLOTS = [
-  '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-  '12:00', '12:30', '13:00', '13:30', '14:00', '14:30',
-  '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'
-];
+
 
 const MAJOR_INDIAN_CITIES = [
   { name: 'Chandigarh', pincode: '160017', lat: 30.7333, lng: 76.7794 },
@@ -57,24 +54,16 @@ const ChangeMapView: React.FC<{ center: [number, number] }> = ({ center }) => {
   return null;
 };
 
-const LocationPicker = ({ position, setPosition, isDraggable = true }: any) => {
+const LocationPicker = ({ position }: any) => {
   return position ? (
     <Marker 
       position={position} 
       icon={iconCritical} 
-      draggable={isDraggable}
-      eventHandlers={isDraggable ? {
-        dragend(e) {
-          const marker = e.target;
-          const pos = marker.getLatLng();
-          setPosition([pos.lat, pos.lng]);
-        }
-      } : {}}
+      draggable={false}
     >
       <Popup>
         <div className="text-center">
           <strong>Your Location</strong>
-          {isDraggable && <p className="text-xs text-text-secondary mt-1">Drag me to adjust search center</p>}
         </div>
       </Popup>
     </Marker>
@@ -93,8 +82,15 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c; 
 };
 
-const FindBlood: React.FC = () => {
+const FindDonors: React.FC = () => {
   const navigate = useNavigate();
+  
+  useEffect(() => {
+    const role = localStorage.getItem('liforce_role');
+    if (role !== 'bloodbank') {
+      navigate('/');
+    }
+  }, [navigate]);
   const [searchParams] = useSearchParams();
   const { showToast } = useToast();
 
@@ -130,13 +126,12 @@ const FindBlood: React.FC = () => {
   const [banks, setBanks] = useState<any[]>([]);
   const [mapCenter, setMapCenter] = useState<[number, number]>([30.7333, 76.7794]);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
-  const [loggedInBankId, setLoggedInBankId] = useState<string | null>(null);
 
   // Premium modal states
   const [selectedContactBank, setSelectedContactBank] = useState<any | null>(null);
   const [selectedRequestBank, setSelectedRequestBank] = useState<any | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+
 
   const [requestForm, setRequestForm] = useState({
     bloodGroup: 'A+',
@@ -154,55 +149,27 @@ const FindBlood: React.FC = () => {
 
   const isLoggedIn = !!localStorage.getItem('liforce_token');
 
-  // Load user data if logged in to autofill contact number and set location
+  // Load user data if logged in to autofill contact number
   useEffect(() => {
     if (isLoggedIn) {
-      const role = localStorage.getItem('liforce_role');
-      const token = localStorage.getItem('liforce_token');
-
-      if (role === 'bloodbank') {
-        const fetchBankProfile = async () => {
-          try {
-            const res = await fetch(`${API_URL}/bloodbanks/me/dashboard`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-              const data = await res.json();
-              if (data.bank) {
-                setLoggedInBankId(data.bank.id);
-                if (data.bank.latitude && data.bank.longitude) {
-                  setMapCenter([data.bank.latitude, data.bank.longitude]);
-                  setUserLocation([data.bank.latitude, data.bank.longitude]);
-                }
-              }
+      const fetchBankProfile = async () => {
+        try {
+          const token = localStorage.getItem('liforce_token');
+          const res = await fetch(`${API_URL}/bloodbanks/me/dashboard`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.bank?.latitude && data.bank?.longitude) {
+              setMapCenter([data.bank.latitude, data.bank.longitude]);
+              setUserLocation([data.bank.latitude, data.bank.longitude]);
             }
-          } catch (err) {
-            console.warn('Could not pre-fetch bank info', err);
           }
-        };
-        fetchBankProfile();
-      } else {
-        const fetchDonorProfile = async () => {
-          try {
-            const res = await fetch(`${API_URL}/donors/me`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-              const data = await res.json();
-              if (data.phone) {
-                setRequestForm(prev => ({ ...prev, contactNumber: data.phone }));
-              }
-              if (data.latitude && data.longitude) {
-                setMapCenter([data.latitude, data.longitude]);
-                setUserLocation([data.latitude, data.longitude]);
-              }
-            }
-          } catch (err) {
-            console.warn('Could not pre-fetch donor contact info', err);
-          }
-        };
-        fetchDonorProfile();
-      }
+        } catch (err) {
+          console.warn('Could not pre-fetch bank info', err);
+        }
+      };
+      fetchBankProfile();
     }
   }, [isLoggedIn]);
 
@@ -234,47 +201,29 @@ const FindBlood: React.FC = () => {
   useEffect(() => {
     const fetchBanks = async () => {
       try {
-        const response = await fetch(`${API_URL}/bloodbanks`);
+        const response = await fetch(`${API_URL}/donors`);
         const data = await response.json();
-        const formatted = data.map((b: any) => {
-          // Recompute status per blood group with per-bank thresholds
-          const inventoryWithStatus = (b.inventory || []).map((inv: any) => {
-            const units = inv.unitsAvailable || 0;
-            let status: 'Critical' | 'Low' | 'Good' = 'Good';
-            if (units < 5) status = 'Critical';
-            else if (units < 15) status = 'Low';
-            return { type: inv.bloodGroup, count: units, status };
-          });
-
-          // Overall bank status: any Critical = Critical, any Low = Low, else Good
-          let overallStatus = 'Good';
-          if (b.inventory?.length) {
-            const hasCritical = inventoryWithStatus.some((i: any) => i.status === 'Critical');
-            const hasLow = inventoryWithStatus.some((i: any) => i.status === 'Low');
-            if (hasCritical) overallStatus = 'Critical';
-            else if (hasLow) overallStatus = 'Low';
-          } else {
-            overallStatus = 'Critical';
-          }
-
-          return {
-            id: b.id,
-            name: b.name,
-            address: b.address,
-            lat: b.latitude || 30.7333,
-            lng: b.longitude || 76.7794,
-            distance: '3.2 km',
-            phone: b.phone || '',
-            email: b.email || '',
-            licenseNumber: b.licenseNumber || '',
+        const formatted = data.map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            address: d.city || 'Unknown City',
+            lat: d.latitude || 30.7333,
+            lng: d.longitude || 76.7794,
+            distance: 'Nearby',
+            phone: '',
+            email: '',
+            licenseNumber: '',
             openNow: true,
-            status: overallStatus,
-            bloodGroups: inventoryWithStatus,
-          };
-        });
+            status: d.status || 'Good',
+            bloodGroups: [{
+              type: d.bloodGroup,
+              count: 1,
+              status: d.status || 'Good'
+            }],
+        }));
         setBanks(formatted);
       } catch {
-        showToast('Could not load blood banks. Is the backend running?', 'error');
+        showToast('Could not load donors. Is the backend running?', 'error');
       }
     };
     fetchBanks();
@@ -287,13 +236,8 @@ const FindBlood: React.FC = () => {
         : Infinity;
       return { ...bank, calculatedDistance: dist };
     }).filter((bank) => {
-      if (loggedInBankId && bank.id === loggedInBankId) return false;
       if (bank.calculatedDistance > distance) return false;
       if (openNow && !bank.openNow) return false;
-      // We don't need to filter by city name string if we are already filtering by physical distance from mapCenter!
-      // But we can keep it if they explicitly type a city that isn't the map center.
-      // Actually, removing city text filter is better because the map center is updated to the city anyway.
-      
       if (selectedGroups.length > 0) {
         const hasGroup = bank.bloodGroups.some((bg: any) => selectedGroups.includes(bg.type));
         if (!hasGroup) return false;
@@ -340,12 +284,17 @@ const FindBlood: React.FC = () => {
     }
   };
 
+  const getBankMarkerIcon = (status: string) => {
+    if (status === 'Critical') return iconCritical;
+    if (status === 'Warning') return iconWarning;
+    return iconGood;
+  };
 
   const handleSearch = () => {
     if (searchGroup && !selectedGroups.includes(searchGroup)) {
       setSelectedGroups(searchGroup ? [searchGroup] : []);
     }
-    showToast(`Showing ${filteredBanks.length} blood bank(s)`, 'info');
+    showToast(`Showing ${filteredBanks.length} donor(s)`, 'info');
   };
 
   const handleCopy = (text: string, field: string) => {
@@ -355,74 +304,14 @@ const FindBlood: React.FC = () => {
     showToast(`${field} copied to clipboard!`, 'success');
   };
 
-  const handleRequestSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!requestForm.patientAge) {
-      showToast('Patient age is required', 'error');
-      return;
-    }
-    if (requestForm.deliveryMode === 'Delivery' && !requestForm.deliveryAddress.trim()) {
-      showToast('Delivery address is required for delivery mode', 'error');
-      return;
-    }
 
-    let combinedRequiredDate: string | null = null;
-    if (requestForm.date && requestForm.timeSlot) {
-      combinedRequiredDate = new Date(`${requestForm.date}T${requestForm.timeSlot}:00`).toISOString();
-    }
-
-    const payload = {
-      patientName: requestForm.patientName.trim() || 'Request from Find Blood',
-      bloodGroup: requestForm.bloodGroup,
-      unitsRequired: Number(requestForm.unitsRequired) || 1,
-      hospitalAddress: selectedRequestBank.name,
-      contactNumber: requestForm.contactNumber.trim() || '1234567890',
-      urgencyLevel: requestForm.urgencyLevel,
-      latitude: selectedRequestBank.lat || 30.7333,
-      longitude: selectedRequestBank.lng || 76.7794,
-      patientGender: requestForm.patientGender,
-      patientAge: Number(requestForm.patientAge),
-      deliveryMode: requestForm.deliveryMode,
-      requiredDate: combinedRequiredDate,
-      deliveryAddress: requestForm.deliveryMode === 'Delivery' ? requestForm.deliveryAddress : selectedRequestBank.address,
-      assignedBloodBankId: selectedRequestBank.id,
-    };
-
-    const token = localStorage.getItem('liforce_token');
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    try {
-      setIsSubmitting(true);
-      const res = await fetch(`${API_URL}/emergencies`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to create emergency request');
-      }
-
-      showToast('Emergency request successfully placed and blood bank notified!', 'success');
-      setSelectedRequestBank(null);
-    } catch (err: any) {
-      showToast(err.message || 'Error occurred while placing request', 'error');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
       
       <div className="bg-surface border-b border-border py-8 mt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-text-primary mb-6">Find blood near you</h1>
+          <h1 className="text-3xl font-bold text-text-primary mb-6">Find donors near you</h1>
           <div className="bg-white p-4 rounded-xl border border-border shadow-sm flex flex-col lg:flex-row gap-3 items-stretch">
             <div className="flex-1 flex items-center px-4 py-3 bg-background rounded-lg border border-border min-h-[48px]">
               <span className="text-primary font-bold mr-3 text-sm shrink-0">ABO</span>
@@ -595,7 +484,7 @@ const FindBlood: React.FC = () => {
 
             <div className="flex-grow overflow-y-auto p-4 space-y-4 bg-background min-h-[300px] lg:min-h-0 overscroll-contain">
               {filteredBanks.length === 0 && (
-                <p className="text-center text-text-secondary mt-10">No blood banks match your filters.</p>
+                <p className="text-center text-text-secondary mt-10">No donors match your filters..</p>
               )}
               {filteredBanks.map((bank, index) => (
                 <motion.div
@@ -637,13 +526,7 @@ const FindBlood: React.FC = () => {
                     >
                       <Phone className="h-4 w-4 mr-2" /> Contact
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRequestBank(bank)}
-                      className="flex-1 bg-primary text-white py-2 rounded-lg text-sm font-medium hover:bg-primary-dark cursor-pointer"
-                    >
-                      Request blood
-                    </button>
+                    
                   </div>
                 </motion.div>
               ))}
@@ -651,26 +534,12 @@ const FindBlood: React.FC = () => {
           </div>
 
           <div className="flex-grow min-h-[400px] lg:h-full relative bg-gray-100">
-              <MapContainer center={mapCenter} zoom={13} scrollWheelZoom className="w-full h-full">
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                />
-                <ChangeMapView center={mapCenter} />
-                <LocationPicker 
-                  position={userLocation} 
-                  setPosition={(pos: [number, number]) => {
-                    setUserLocation(pos);
-                    setMapCenter(pos);
-                  }} 
-                  isDraggable={!loggedInBankId}
-                />
-                {filteredBanks.map((bank) => (
-                  <Marker 
-                    key={bank.id} 
-                    position={[bank.lat, bank.lng]}
-                    icon={iconGood}
-                  >
+            <MapContainer center={mapCenter} zoom={13} scrollWheelZoom className="w-full h-full">
+              <ChangeMapView center={mapCenter} />
+              <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+              <LocationPicker position={userLocation} />
+              {filteredBanks.map((bank) => (
+                <Marker key={bank.id} position={[bank.lat, bank.lng]} icon={iconGood}>
                   <Popup>
                     <div className="min-w-[180px]">
                       <h3 className="font-bold text-sm mb-1">{bank.name}</h3>
@@ -683,13 +552,7 @@ const FindBlood: React.FC = () => {
                         >
                           <Phone className="h-3.5 w-3.5" /> Contact
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedRequestBank(bank)}
-                          className="w-full bg-primary text-white py-1.5 rounded text-xs font-bold hover:bg-primary-dark text-center cursor-pointer"
-                        >
-                          Request blood
-                        </button>
+                        
                       </div>
                     </div>
                   </Popup>
@@ -737,7 +600,7 @@ const FindBlood: React.FC = () => {
 
               <div className="space-y-4">
                 <div className="bg-primary-light p-4 rounded-xl border border-primary/10 mb-2">
-                  <span className="text-xs uppercase tracking-wider font-semibold text-primary">Blood Bank Partner</span>
+                  <span className="text-xs uppercase tracking-wider font-semibold text-primary">Donor Profile</span>
                   <h4 className="font-bold text-text-primary text-lg mt-0.5 leading-snug">{selectedContactBank.name}</h4>
                 </div>
 
@@ -850,346 +713,11 @@ const FindBlood: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Request Blood Modal */}
-      <AnimatePresence>
-        {selectedRequestBank && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedRequestBank(null)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            />
-
-            {!isLoggedIn ? (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="bg-white/95 backdrop-blur-md border border-white/20 shadow-2xl rounded-2xl max-w-md w-full overflow-hidden p-6 relative z-10 text-center"
-              >
-                <button
-                  type="button"
-                  onClick={() => setSelectedRequestBank(null)}
-                  className="absolute top-4 right-4 text-text-secondary hover:text-text-primary transition-colors p-1 rounded-full hover:bg-gray-100"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-
-                <div className="mx-auto bg-amber-50 border border-amber-200 text-amber-600 p-3 rounded-full w-14 h-14 flex items-center justify-center mb-4 animate-pulse">
-                  <AlertCircle className="h-8 w-8" />
-                </div>
-
-                <h3 className="font-bold text-text-primary text-xl mb-2">Authentication Required</h3>
-                <p className="text-text-secondary text-sm leading-relaxed mb-6">
-                  To place a direct blood request with <span className="font-bold text-text-primary">{selectedRequestBank.name}</span>, you must first log in or register. This helps us secure patients' coordinates and coordinate effectively.
-                </p>
-
-                <div className="space-y-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedRequestBank(null);
-                      navigate('/login');
-                    }}
-                    className="w-full bg-primary text-white py-3 rounded-xl font-bold hover:bg-primary-dark transition-all shadow-sm cursor-pointer"
-                  >
-                    Log In as Requester / Donor
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedRequestBank(null);
-                      navigate('/register');
-                    }}
-                    className="w-full border border-border text-text-primary py-3 rounded-xl font-bold hover:bg-gray-50 transition-all cursor-pointer"
-                  >
-                    Create a New Account
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRequestBank(null)}
-                    className="w-full text-xs text-text-secondary hover:underline py-1 mt-2 cursor-pointer"
-                  >
-                    Cancel and Return
-                  </button>
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="bg-white/95 backdrop-blur-md border border-white/20 shadow-2xl rounded-2xl max-w-2xl w-full overflow-hidden relative z-10 flex flex-col max-h-[90vh]"
-              >
-                <button
-                  type="button"
-                  onClick={() => setSelectedRequestBank(null)}
-                  className="absolute top-4 right-4 text-text-secondary hover:text-text-primary transition-colors p-1 rounded-full hover:bg-gray-100"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-
-                <form onSubmit={handleRequestSubmit} className="flex flex-col h-full min-h-0">
-                  <div className="p-6 overflow-y-auto space-y-5 flex-grow min-h-0">
-                    <div className="bg-primary/5 p-4 rounded-xl border border-primary/10 flex items-center gap-3">
-                      <div className="bg-primary/10 p-2.5 rounded-lg shrink-0">
-                        <Sparkles className="h-6 w-6 text-primary" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-text-primary text-lg leading-tight">Request Blood</h4>
-                        <p className="text-text-secondary text-xs mt-0.5">Place a direct request to <span className="font-semibold text-text-primary">{selectedRequestBank.name}</span></p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Blood Group Required</label>
-                        <div className="grid grid-cols-4 gap-2">
-                          {BLOOD_GROUPS.map((bg) => (
-                            <button
-                              key={bg}
-                              type="button"
-                              onClick={() => setRequestForm(prev => ({ ...prev, bloodGroup: bg }))}
-                              className={`py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
-                                requestForm.bloodGroup === bg
-                                  ? 'bg-primary text-white border-primary shadow-sm scale-[1.03]'
-                                  : 'bg-white border-border text-text-secondary hover:border-primary hover:text-primary'
-                              }`}
-                            >
-                              {bg}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Units Required (350ml/unit)</label>
-                        <div className="flex items-center gap-4 py-2">
-                          <input
-                            type="range"
-                            min="1"
-                            max="10"
-                            value={requestForm.unitsRequired}
-                            onChange={(e) => setRequestForm(prev => ({ ...prev, unitsRequired: parseInt(e.target.value) }))}
-                            className="flex-grow accent-primary"
-                          />
-                          <span className="font-extrabold text-primary text-lg bg-primary-light px-3 py-1 rounded-lg border border-primary/10 w-12 text-center shrink-0">
-                            {requestForm.unitsRequired}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Delivery Mode</label>
-                        <div className="flex bg-gray-100 rounded-lg p-1 border border-border">
-                          {['Self-Collection', 'Delivery'].map((mode) => (
-                            <button
-                              key={mode}
-                              type="button"
-                              onClick={() => setRequestForm(prev => ({ ...prev, deliveryMode: mode }))}
-                              className={`flex-grow py-2 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                                requestForm.deliveryMode === mode
-                                  ? 'bg-primary text-white shadow-sm'
-                                  : 'text-text-secondary hover:text-text-primary'
-                              }`}
-                            >
-                              {mode === 'Self-Collection' ? 'Self-Collection' : 'Delivery'}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        {requestForm.deliveryMode === 'Self-Collection' ? (
-                          <div className="bg-amber-50/50 border border-amber-200/50 rounded-xl p-3 h-full flex flex-col justify-center">
-                            <div className="flex items-start gap-2">
-                              <MapPin className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                              <div>
-                                <p className="text-xs font-bold text-amber-800">Collection Point</p>
-                                <p className="text-[11px] text-text-secondary mt-0.5 leading-normal truncate">{selectedRequestBank.address}</p>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Delivery Address</label>
-                            <input
-                              type="text"
-                              value={requestForm.deliveryAddress}
-                              onChange={(e) => setRequestForm(prev => ({ ...prev, deliveryAddress: e.target.value }))}
-                              placeholder="Hospital name or delivery address"
-                              className="w-full bg-white border border-border rounded-lg p-2 text-sm outline-none focus:border-primary transition-all"
-                              required
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Required Date</label>
-                        <input
-                          type="date"
-                          min={new Date().toISOString().split('T')[0]}
-                          value={requestForm.date}
-                          onChange={(e) => setRequestForm(prev => ({ ...prev, date: e.target.value }))}
-                          className="w-full bg-white border border-border rounded-lg p-2.5 text-sm outline-none focus:border-primary transition-all"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Preferred Time Slot</label>
-                        <div className="grid grid-cols-4 gap-1.5 max-h-[96px] overflow-y-auto p-1.5 border border-border rounded-lg bg-gray-50">
-                          {TIME_SLOTS.map((slot) => (
-                            <button
-                              key={slot}
-                              type="button"
-                              onClick={() => setRequestForm(prev => ({ ...prev, timeSlot: slot }))}
-                              className={`py-1 px-1.5 text-[11px] font-bold rounded border transition-all cursor-pointer ${
-                                requestForm.timeSlot === slot
-                                  ? 'bg-primary text-white border-primary shadow-xs'
-                                  : 'bg-white border-border text-text-secondary hover:border-primary hover:text-primary'
-                              }`}
-                            >
-                              {slot}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-border pt-4">
-                      <h5 className="font-bold text-text-primary text-sm mb-3 flex items-center gap-2">
-                        <ShieldCheck className="h-4 w-4 text-primary" /> Patient & Urgency Information
-                      </h5>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Patient Name (Optional)</label>
-                          <input
-                            type="text"
-                            value={requestForm.patientName}
-                            onChange={(e) => setRequestForm(prev => ({ ...prev, patientName: e.target.value }))}
-                            placeholder="e.g. John Doe"
-                            className="w-full bg-white border border-border rounded-lg p-2 text-sm outline-none focus:border-primary transition-all"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Patient Age</label>
-                          <input
-                            type="number"
-                            min="0"
-                            max="120"
-                            value={requestForm.patientAge}
-                            onChange={(e) => setRequestForm(prev => ({ ...prev, patientAge: e.target.value }))}
-                            placeholder="e.g. 42"
-                            className="w-full bg-white border border-border rounded-lg p-2 text-sm outline-none focus:border-primary transition-all"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Patient Gender</label>
-                          <div className="flex bg-gray-100 rounded-lg p-1 border border-border">
-                            {['Male', 'Female', 'Other'].map((g) => (
-                              <button
-                                key={g}
-                                type="button"
-                                onClick={() => setRequestForm(prev => ({ ...prev, patientGender: g }))}
-                                className={`flex-grow py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                                  requestForm.patientGender === g
-                                    ? 'bg-white text-text-primary shadow-xs'
-                                    : 'text-text-secondary hover:text-text-primary'
-                                }`}
-                              >
-                                {g}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                        <div>
-                          <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Contact Phone</label>
-                          <input
-                            type="tel"
-                            value={requestForm.contactNumber}
-                            onChange={(e) => setRequestForm(prev => ({ ...prev, contactNumber: e.target.value }))}
-                            placeholder="Requester Phone Number"
-                            className="w-full bg-white border border-border rounded-lg p-2 text-sm outline-none focus:border-primary transition-all"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Urgency Level</label>
-                          <div className="flex bg-gray-100 rounded-lg p-1 border border-border">
-                            {['Normal', 'Urgent', 'Emergency'].map((urg) => (
-                              <button
-                                key={urg}
-                                type="button"
-                                onClick={() => setRequestForm(prev => ({ ...prev, urgencyLevel: urg }))}
-                                className={`flex-grow py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                                  requestForm.urgencyLevel === urg
-                                    ? urg === 'Emergency'
-                                      ? 'bg-critical text-white shadow-xs'
-                                      : urg === 'Urgent'
-                                      ? 'bg-warning text-white shadow-xs'
-                                      : 'bg-white text-text-primary shadow-xs'
-                                    : 'text-text-secondary hover:text-text-primary'
-                                }`}
-                              >
-                                {urg}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-6 border-t border-border flex gap-3 bg-gray-50 shrink-0">
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="flex-grow bg-primary text-white py-3 rounded-xl font-bold hover:bg-primary-dark disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                          Processing Request...
-                        </>
-                      ) : (
-                        <>
-                          <ShieldCheck className="h-5 w-5" /> Book Appointment & Request
-                        </>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRequestBank(null)}
-                      className="px-6 border border-border text-text-primary rounded-xl font-semibold hover:bg-gray-100 transition-all cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              </motion.div>
-            )}
-          </div>
-        )}
-      </AnimatePresence>
+      {/* Request Blood Modal Removed */}
 
           </div>
   );
 };
 
-export default FindBlood;
+export default FindDonors;
 

@@ -16,10 +16,17 @@ import Community from './pages/Community';
 import DonorProfile from './pages/DonorProfile';
 import DonateBlood from './pages/DonateBlood';
 import OrganiseCamp from './pages/OrganiseCamp';
-import StaticPage from './pages/StaticPage';
+import Rewards from './pages/Rewards';
+
+import FindDonors from './pages/FindDonors';
 import NotFound from './pages/NotFound';
+import AboutUs from './pages/AboutUs';
+import ContactUs from './pages/ContactUs';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 import ChatbotWidget from './components/ChatbotWidget';
-import SOSFloatingButton from './components/SOSFloatingButton';
+// Removed SOSFloatingButton
+import Navbar from './components/Navbar';
+import Footer from './components/Footer';
 import { ToastProvider, useToast } from './components/ToastProvider';
 import { ChatProvider } from './context/ChatContext';
 import { API_URL } from './lib/api';
@@ -62,7 +69,7 @@ const AnimatedRoutes = () => {
     setSosResponseStep('details');
   };
 
-  const submitSOSResponse = async (responseType: 'I will donate myself' | 'I will bring someone else'): Promise<boolean> => {
+  const submitSOSResponse = async (responseType: 'I will donate myself' | 'I will bring someone else' | 'Prepared Units'): Promise<boolean> => {
     try {
       const token = localStorage.getItem('liforce_token');
       const userId = getUserIdFromToken(token);
@@ -103,17 +110,27 @@ const AnimatedRoutes = () => {
         }
       }
 
+      const role = localStorage.getItem('liforce_role');
+      const isBloodBank = role === 'bloodbank';
+      
+      const payload: any = {
+        responderName: responderName || JSON.parse(localStorage.getItem('liforce_user') || '{}')?.name || 'Unknown',
+        responderPhone: responderPhone || JSON.parse(localStorage.getItem('liforce_user') || '{}')?.phone || 'Unknown',
+        responderType: isBloodBank ? 'BloodBank' : 'Donor',
+        responseType,
+        bloodGroup: responderBloodGroup
+      };
+      
+      if (isBloodBank) {
+        payload.bloodBankId = userId;
+      } else {
+        payload.responderId = userId;
+      }
+
       const response = await fetch(`${API_URL}/emergencies/${activeSOS.id}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          responderId: userId,
-          responderName,
-          responderPhone,
-          responderType: 'Donor',
-          responseType,
-          bloodGroup: responderBloodGroup
-        })
+        body: JSON.stringify(payload)
       });
 
       if (response.ok) {
@@ -141,13 +158,15 @@ const AnimatedRoutes = () => {
         socketRef.current?.disconnect();
         const socket = io(API_URL, { query: { userId } });
         socket.on('emergency_sos', (data: any) => {
+          if (data.requesterId === userId) return; // Prevent self-pinging
           setActiveSOS(data);
           setSosResponseStep('details');
-          showToast(`🚨 URGENT: ${data.bloodGroup} needed at ${data.hospitalName}!`, 'error');
+          showToast(`🚨 URGENT: ${data.bloodGroup} needed at ${data.hospitalAddress}!`, 'error');
         });
         socket.on('emergency_response_received', (data: any) => {
+          const fulfillerType = data.responderType === 'BloodBank' ? 'Blood Bank' : 'Donor';
           showToast(
-            `❤️ LIFE-SAVER FOUND! ${data.responderName} (${data.bloodGroup}) responded: "${data.responseType}" for patient ${data.patientName}! Contact: ${data.responderPhone || 'Not provided'}`,
+            `❤️ REQUEST APPROVED: Your request for ${data.patientName} is approved and being fulfilled by ${fulfillerType} "${data.responderName}". Contact: ${data.responderPhone || 'Not provided'}`,
             'success'
           );
           // Dispatch a custom event to notify other components (e.g. DonorDashboard) to update live
@@ -167,6 +186,14 @@ const AnimatedRoutes = () => {
             window.dispatchEvent(new CustomEvent('new_camp_organized', { detail: data }));
           }
         });
+        socket.on('camp_updated', (data: any) => {
+          showToast(`⚠️ CAMP UPDATE: The schedule for "${data.title}" has been modified.`, 'info');
+          window.dispatchEvent(new CustomEvent('camp_updated', { detail: data }));
+        });
+        socket.on('camp_abandoned', (data: any) => {
+          showToast(`🚨 CAMP CANCELLED: "${data.title}" has been abandoned. Reason: ${data.reason}`, 'error');
+          window.dispatchEvent(new CustomEvent('camp_abandoned', { detail: data }));
+        });
         socketRef.current = socket;
       }
     } else {
@@ -176,8 +203,11 @@ const AnimatedRoutes = () => {
   }, [location.pathname]);
 
   return (
-    <div className="relative min-h-screen">
-      <AnimatePresence mode="wait">
+    <div className="relative min-h-screen flex flex-col">
+      <Navbar />
+      
+      <main className="flex-grow">
+        <AnimatePresence mode="wait">
         <motion.div
           key={location.pathname}
           variants={pageVariants}
@@ -195,6 +225,7 @@ const AnimatedRoutes = () => {
             <Route path="/register-bloodbank" element={<BloodBankRegistration />} />
             <Route path="/dashboard/donor" element={<DonorDashboard />} />
             <Route path="/dashboard/bloodbank" element={<BloodBankDashboard />} />
+            <Route path="/find-donors" element={<FindDonors />} />
             <Route path="/emergency" element={<EmergencyRequest />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/community" element={<Community />} />
@@ -204,46 +235,18 @@ const AnimatedRoutes = () => {
             <Route path="/donate" element={<Navigate to="/register" replace />} />
             <Route path="/blood-banks" element={<Navigate to="/find-blood" replace />} />
             <Route path="/partner" element={<Navigate to="/register-bloodbank" replace />} />
-            <Route
-              path="/about"
-              element={
-                <StaticPage title="About LiForce">
-                  <p>LiForce connects blood donors, recipients, and blood banks across India with real-time matching and emergency alerts.</p>
-                  <p>Our mission is to ensure the right blood reaches the right person at the right time.</p>
-                </StaticPage>
-              }
-            />
-            <Route
-              path="/blog"
-              element={
-                <StaticPage title="Blog">
-                  <p>Stories, updates, and guides from the LiForce team will appear here. Check back soon for donation tips and community highlights.</p>
-                </StaticPage>
-              }
-            />
-            <Route
-              path="/privacy"
-              element={
-                <StaticPage title="Privacy Policy">
-                  <p>We protect your personal and health information. Data is used only to facilitate donations, emergency matching, and account security.</p>
-                  <p>Contact us at privacy@liforce.in for data requests or questions.</p>
-                </StaticPage>
-              }
-            />
-            <Route
-              path="/contact"
-              element={
-                <StaticPage title="Contact Us">
-                  <p><strong>Email:</strong> support@liforce.in</p>
-                  <p><strong>Phone:</strong> 1800-LIFORCE (toll-free)</p>
-                  <p><strong>Address:</strong> Sector 17, Chandigarh, India</p>
-                </StaticPage>
-              }
-            />
+            <Route path="/about" element={<AboutUs />} />
+            <Route path="/rewards" element={<Rewards />} />
+            <Route path="/blog" element={<Navigate to="/rewards" replace />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/contact" element={<ContactUs />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </motion.div>
       </AnimatePresence>
+      </main>
+
+      <Footer />
 
       <AnimatePresence>
         {activeSOS && (
@@ -278,7 +281,7 @@ const AnimatedRoutes = () => {
                     <span className="text-3xl font-black">{activeSOS.bloodGroup}</span>
                     <span className="text-xl font-bold bg-white text-[#C0392B] px-3 py-0.5 rounded-full">{activeSOS.unitsRequired} Units</span>
                   </div>
-                  <p className="text-sm font-semibold">🏥 {activeSOS.hospitalName}</p>
+                  <p className="text-sm font-semibold">🏥 {activeSOS.hospitalAddress}</p>
                   <p className="text-xs text-white/80 mt-1">
                     👤 {activeSOS.patientName}
                     {(activeSOS.patientAge || activeSOS.patientGender) && (
@@ -298,13 +301,29 @@ const AnimatedRoutes = () => {
                   >
                     Decline
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setSosResponseStep('choice')}
-                    className="flex-1 bg-white text-[#C0392B] hover:bg-gray-100 py-2.5 rounded-xl text-sm font-black text-center shadow-lg transition-all active:scale-95"
-                  >
-                    RESPOND NOW
-                  </button>
+                  {localStorage.getItem('liforce_role') === 'bloodbank' ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await submitSOSResponse('Prepared Units');
+                        if (ok) {
+                          handleCloseSOS();
+                          window.dispatchEvent(new CustomEvent('sos_match_confirmed', { detail: { id: activeSOS.id } }));
+                        }
+                      }}
+                      className="flex-1 bg-white text-[#C0392B] hover:bg-gray-100 py-2.5 rounded-xl text-sm font-black text-center shadow-lg transition-all active:scale-95"
+                    >
+                      Confirm
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setSosResponseStep('choice')}
+                      className="flex-1 bg-white text-[#C0392B] hover:bg-gray-100 py-2.5 rounded-xl text-sm font-black text-center shadow-lg transition-all active:scale-95"
+                    >
+                      RESPOND NOW
+                    </button>
+                  )}
                 </div>
               </>
             )}
@@ -392,7 +411,7 @@ const AnimatedRoutes = () => {
                   </div>
                   <h5 className="font-black text-base text-white">Life-Saver Choice! ❤️</h5>
                   <p className="text-xs text-white/90 leading-relaxed px-2">
-                    Thank you so much! Please call the emergency coordinator immediately to coordinate your arrival at <span className="font-bold">{activeSOS.hospitalName}</span>.
+                    Thank you so much! Please call the emergency coordinator immediately to coordinate your arrival at <span className="font-bold">{activeSOS.hospitalAddress}</span>.
                   </p>
                 </div>
 
@@ -442,7 +461,7 @@ const AnimatedRoutes = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      const shareMsg = `🚨 URGENT BLOOD NEEDED! 🚨\nBlood Group: ${activeSOS.bloodGroup}\nUnits: ${activeSOS.unitsRequired}\nHospital: ${activeSOS.hospitalName}\nPatient: ${activeSOS.patientName}${activeSOS.patientAge || activeSOS.patientGender ? ` (${activeSOS.patientAge ? `${activeSOS.patientAge} y/o` : ''}${activeSOS.patientAge && activeSOS.patientGender ? ', ' : ''}${activeSOS.patientGender || ''})` : ''}\nContact: ${activeSOS.contactNumber || '102'}\nShared via LiForce - Join us to save lives!`;
+                      const shareMsg = `🚨 URGENT BLOOD NEEDED! 🚨\nBlood Group: ${activeSOS.bloodGroup}\nUnits: ${activeSOS.unitsRequired}\nHospital: ${activeSOS.hospitalAddress}\nPatient: ${activeSOS.patientName}${activeSOS.patientAge || activeSOS.patientGender ? ` (${activeSOS.patientAge ? `${activeSOS.patientAge} y/o` : ''}${activeSOS.patientAge && activeSOS.patientGender ? ', ' : ''}${activeSOS.patientGender || ''})` : ''}\nContact: ${activeSOS.contactNumber || '102'}\nShared via LiForce - Join us to save lives!`;
                       navigator.clipboard.writeText(shareMsg);
                       showToast('SOS message copied to clipboard! Share it now.', 'success');
                     }}
@@ -483,7 +502,7 @@ function App() {
       <ChatProvider>
         <Router>
           <AnimatedRoutes />
-          <SOSFloatingButton />
+          {/* Footer removed */}
           <ChatbotWidget />
         </Router>
       </ChatProvider>

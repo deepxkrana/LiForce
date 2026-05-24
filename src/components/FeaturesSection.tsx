@@ -26,8 +26,8 @@ const FeaturesSection: React.FC = () => {
     },
     {
       icon: <Tent className="h-6 w-6 text-primary" />,
-      title: 'Camp management',
-      description: 'Discover upcoming blood donation drives in your city and manage your RSVPs easily.'
+      title: 'Community Camps',
+      description: 'Discover upcoming blood donation drives in your city and manage your attendance easily.'
     },
     {
       icon: <HeartHandshake className="h-6 w-6 text-primary" />,

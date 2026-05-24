@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   LayoutDashboard, Droplet, CalendarClock, Bell, Trophy, Activity, MessageSquare, Settings,
-  Flame, Calendar, MapPin, CheckCircle, AlertTriangle, Bot, Phone, Heart, X, Check, User
+  Flame, Calendar, MapPin, CheckCircle, AlertTriangle, Bot, Phone, Heart, X, Check, User, Users, Plus, Minus
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, Tooltip as LeafletTooltip } from 'react-leaflet';
 import L from 'leaflet';
 import DashboardLayout from '../layouts/DashboardLayout';
 import SectionPlaceholder from '../components/dashboard/SectionPlaceholder';
@@ -23,6 +23,58 @@ const redIcon = L.divIcon({
   popupAnchor: [0, -24],
   html: `<span style="background-color: #E24B4A; width: 24px; height: 24px; display: block; left: -12px; top: -12px; position: relative; border-radius: 50%; border: 3px solid #FFFFFF; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"></span>`
 });
+
+const orangeIcon = L.divIcon({
+  className: "custom-pin-user",
+  iconAnchor: [0, 12],
+  popupAnchor: [0, -24],
+  tooltipAnchor: [0, -12],
+  html: `<span style="background-color: #F59E0B; width: 24px; height: 24px; display: block; left: -12px; top: -12px; position: relative; border-radius: 50%; border: 3px solid #FFFFFF; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"></span>`
+});
+
+const LocationPicker = ({ position, setPosition }: any) => {
+  useMapEvents({
+    click(e) {
+      setPosition([e.latlng.lat, e.latlng.lng]);
+    },
+  });
+  return position ? <Marker position={position} icon={redIcon} /> : null;
+};
+
+const CustomZoomControl = () => {
+  const map = useMap();
+  
+  const handleZoomIn = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const currentZoom = map.getZoom();
+    if (currentZoom < 18) map.setZoom(currentZoom + 1);
+  };
+  
+  const handleZoomOut = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const currentZoom = map.getZoom();
+    if (currentZoom > 10) map.setZoom(currentZoom - 1);
+  };
+
+  return (
+    <div className="absolute top-2 right-2 flex flex-col gap-1 z-[400]">
+      <button 
+        type="button" 
+        onClick={handleZoomIn} 
+        className="w-8 h-8 bg-white/90 backdrop-blur-md border border-border rounded shadow-sm flex items-center justify-center text-text-primary hover:bg-gray-50 focus:outline-none transition-colors"
+      >
+        <Plus className="w-4 h-4" />
+      </button>
+      <button 
+        type="button" 
+        onClick={handleZoomOut} 
+        className="w-8 h-8 bg-white/90 backdrop-blur-md border border-border rounded shadow-sm flex items-center justify-center text-text-primary hover:bg-gray-50 focus:outline-none transition-colors"
+      >
+        <Minus className="w-4 h-4" />
+      </button>
+    </div>
+  );
+};
 
 const AVAILABLE_BLOOD_BANKS = [
   { id: '1', name: 'Rotary Blood Bank', address: 'Sector 37, Chandigarh' },
@@ -45,6 +97,7 @@ const DonorDashboard: React.FC = () => {
   const [editCity, setEditCity] = useState('');
   const [editMaxDistance, setEditMaxDistance] = useState(50);
   const [editNotifications, setEditNotifications] = useState(true);
+  const [editCoordinates, setEditCoordinates] = useState<[number, number] | null>(null);
   const [selectedResponseRequestId, setSelectedResponseRequestId] = useState<string | null>(null);
 
   const handleRespondToSOS = async (requestId: string, responseType: 'I will donate myself' | 'I will bring someone else') => {
@@ -117,6 +170,7 @@ const DonorDashboard: React.FC = () => {
     setEditCity(donorData?.city || '');
     setEditMaxDistance(donorData?.maxTravelDistanceKm || 50);
     setEditNotifications(donorData?.notificationsEnabled ?? true);
+    setEditCoordinates(donorData?.latitude && donorData?.longitude ? [donorData.latitude, donorData.longitude] : null);
     setIsEditingProfile(true);
   };
 
@@ -136,7 +190,9 @@ const DonorDashboard: React.FC = () => {
           phone: editPhone,
           city: editCity,
           maxTravelDistanceKm: Number(editMaxDistance),
-          notificationsEnabled: editNotifications
+          notificationsEnabled: editNotifications,
+          latitude: editCoordinates?.[0],
+          longitude: editCoordinates?.[1]
         })
       });
 
@@ -232,12 +288,12 @@ const DonorDashboard: React.FC = () => {
     }
   };
 
-  const [hasAppointment, setHasAppointment] = useState(true);
+  const [hasAppointment, setHasAppointment] = useState(false);
   const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
   const [appointmentDate, setAppointmentDate] = useState('2026-10-24');
   const [appointmentTime, setAppointmentTime] = useState('10:00 AM - 10:30 AM');
-  const [appointmentBank, setAppointmentBank] = useState('Rotary Blood Bank');
-  const [appointmentAddress, setAppointmentAddress] = useState('Sector 37, Chandigarh');
+  const [appointmentBank] = useState('Rotary Blood Bank');
+  const [appointmentAddress] = useState('Sector 37, Chandigarh');
 
   const [rescheduleDate, setRescheduleDate] = useState('2026-10-24');
   const [rescheduleTime, setRescheduleTime] = useState('10:00 AM - 10:30 AM');
@@ -336,7 +392,7 @@ const DonorDashboard: React.FC = () => {
     fetchDonorProfile();
     fetchActiveSOSRequest();
 
-    const handleResponseReceived = (event: Event) => {
+    const handleResponseReceived = () => {
       console.log("Emergency response received custom event: re-fetching my active request status...");
       fetchActiveSOSRequest();
     };
@@ -356,7 +412,8 @@ const DonorDashboard: React.FC = () => {
   const lastDonatedAt = donorData?.lastDonatedAt;
 
   // Find the first pending appointment from real backend data
-  const upcomingAppointment = donorData?.donations?.find((d: any) => d.status === 'Pending');
+  const upcomingAppointment = donorData?.donations?.find((d: any) => ['Pending', 'Accepted'].includes(d.status));
+  const upcomingCamps = donorData?.upcomingCamps || [];
 
   const formatAppointmentTime = (dateStr: string) => {
     try {
@@ -668,7 +725,7 @@ const DonorDashboard: React.FC = () => {
               <ul className="space-y-3">
                 {nearbyRequests.map((req: any, i: number) => (
                   <li key={i} className="p-4 bg-[#FADBD8] rounded-xl border border-[#F5B7B1]">
-                    <p className="font-bold text-critical">{req.bloodGroup} at {req.hospitalName}</p>
+                    <p className="font-bold text-critical">{req.bloodGroup} at {req.hospitalAddress}</p>
                     <button type="button" onClick={() => navigate('/emergency')} className="mt-2 text-sm font-bold text-primary hover:underline">View details →</button>
                   </li>
                 ))}
@@ -821,8 +878,28 @@ const DonorDashboard: React.FC = () => {
             <span className="flex items-center text-xs font-bold text-critical bg-[#FADBD8] px-2 py-1 rounded-full"><span className="w-2 h-2 rounded-full bg-critical mr-1 animate-pulse"></span> {nearbyRequests.length} Active</span>
           </div>
           <div className="flex-grow rounded-xl overflow-hidden border border-border relative z-0">
-            <MapContainer center={[30.7333, 76.7794]} zoom={12} scrollWheelZoom={false} className="w-full h-full" zoomControl={false}>
-              <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+            <MapContainer 
+              key={`${donorData?.latitude || 30.7333}-${donorData?.longitude || 76.7794}`}
+              center={[donorData?.latitude || 30.7333, donorData?.longitude || 76.7794]} 
+              zoom={12} 
+              scrollWheelZoom={false} 
+              doubleClickZoom={false}
+              touchZoom={false}
+              keyboard={false}
+              className="w-full h-full" 
+              zoomControl={false}
+            >
+              <CustomZoomControl />
+              <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+              
+              {donorData?.latitude && donorData?.longitude && (
+                <Marker position={[donorData.latitude, donorData.longitude]} icon={orangeIcon} zIndexOffset={1000}>
+                  <LeafletTooltip direction="top" opacity={1} permanent={false}>
+                    <span className="font-bold">You</span>
+                  </LeafletTooltip>
+                </Marker>
+              )}
+
               {nearbyRequests.map((req, idx) => (
                 <Marker key={idx} position={[req.latitude, req.longitude]} icon={redIcon}>
                   <Popup className="custom-popup">
@@ -838,7 +915,7 @@ const DonorDashboard: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-text-secondary mt-1 mb-2">{req.hospitalName}</div>
+                      <div className="text-xs text-text-secondary mt-1 mb-2">{req.hospitalAddress}</div>
                       
                       {selectedResponseRequestId === req.id ? (
                         <div className="flex flex-col gap-1.5 mt-2 pt-2 border-t border-border">
@@ -893,82 +970,104 @@ const DonorDashboard: React.FC = () => {
       {/* Row 3 - 3 Panels */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         
-        {/* Upcoming Appointment */}
-        {showAppointmentCard ? (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="bg-surface p-6 rounded-2xl border border-border shadow-sm flex flex-col justify-between">
-            <div>
-              <h3 className="font-bold text-text-primary mb-6 flex items-center justify-between border-b border-border pb-3">
-                Upcoming Appointment 
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                  dispStatus === 'Pending' 
-                    ? 'text-yellow-800 bg-yellow-50 border border-yellow-200' 
-                    : 'text-text-secondary bg-gray-100'
-                }`}>
-                  {dispStatus}
-                </span>
-              </h3>
-              <div className="flex items-start mb-6">
-                <div className="bg-primary-light rounded-xl p-3 flex flex-col items-center justify-center min-w-[64px] border border-[#F5B7B1]">
-                  <span className="text-xs font-bold text-primary-dark uppercase">{getMonthAbbr(dispDate)}</span>
-                  <span className="text-xl font-bold text-primary">{getDayStr(dispDate)}</span>
-                </div>
-                <div className="ml-4">
-                  <h4 className="font-bold text-text-primary">{dispBank}</h4>
-                  <p className="text-sm text-text-secondary flex items-center mt-1"><Calendar className="w-3 h-3 mr-1"/> {dispTime}</p>
-                  <p className="text-sm text-text-secondary flex items-center mt-1"><MapPin className="w-3 h-3 mr-1"/> {dispAddress}</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-2 mt-auto">
-              <button 
-                type="button" 
-                onClick={() => {
-                  setRescheduleDate(upcomingAppointment ? new Date(upcomingAppointment.scheduledDate).toISOString().split('T')[0] : appointmentDate);
-                  setRescheduleTime(upcomingAppointment ? formatAppointmentTime(upcomingAppointment.scheduledDate) : appointmentTime);
-                  setIsRescheduleOpen(true);
-                }} 
-                className="flex-1 border border-border text-text-primary font-medium py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors cursor-pointer"
-              >
-                Reschedule
-              </button>
-              <button 
-                type="button" 
-                onClick={handleCancelAppointment} 
-                className="flex-1 bg-white border border-critical text-critical font-medium py-2 rounded-lg text-sm hover:bg-[#FADBD8] transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
+        {/* Upcoming Schedules (Appointments & Camps) */}
+        {(showAppointmentCard || upcomingCamps.length > 0) ? (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="bg-surface p-6 rounded-2xl border border-border shadow-sm flex flex-col gap-6 max-h-[420px] overflow-y-auto">
+             <h3 className="font-bold text-text-primary flex items-center justify-between border-b border-border pb-3 shrink-0">
+               Upcoming Schedules
+             </h3>
+             
+             {showAppointmentCard && (
+               <div className="flex flex-col gap-4 border-b border-border pb-4 last:border-0 last:pb-0 shrink-0">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Appointment</span>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${dispStatus === 'Pending' ? 'text-yellow-800 bg-yellow-50 border border-yellow-200' : 'text-text-secondary bg-gray-100'}`}>{dispStatus}</span>
+                  </div>
+                  <div className="flex items-start">
+                    <div className="bg-primary-light rounded-xl p-2 flex flex-col items-center justify-center min-w-[56px] border border-[#F5B7B1]">
+                      <span className="text-[10px] font-bold text-primary-dark uppercase">{getMonthAbbr(dispDate)}</span>
+                      <span className="text-lg font-bold text-primary">{getDayStr(dispDate)}</span>
+                    </div>
+                    <div className="ml-3">
+                      <h4 className="font-bold text-sm text-text-primary">{dispBank}</h4>
+                      <p className="text-xs text-text-secondary flex items-center mt-1"><Calendar className="w-3 h-3 mr-1"/> {dispTime}</p>
+                      <p className="text-xs text-text-secondary flex items-center mt-1"><MapPin className="w-3 h-3 mr-1"/> {dispAddress}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        setRescheduleDate(upcomingAppointment ? new Date(upcomingAppointment.scheduledDate).toISOString().split('T')[0] : appointmentDate);
+                        setRescheduleTime(upcomingAppointment ? formatAppointmentTime(upcomingAppointment.scheduledDate) : appointmentTime);
+                        setIsRescheduleOpen(true);
+                      }} 
+                      className="flex-1 border border-border text-text-primary font-medium py-1.5 rounded-lg text-xs hover:bg-gray-50 transition-colors cursor-pointer"
+                    >
+                      Reschedule
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={handleCancelAppointment} 
+                      className="flex-1 bg-white border border-critical text-critical font-medium py-1.5 rounded-lg text-xs hover:bg-[#FADBD8] transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+               </div>
+             )}
+
+             {upcomingCamps.map((camp: any) => (
+               <div key={camp.id} className="flex flex-col gap-4 border-b border-border pb-4 last:border-0 last:pb-0 shrink-0">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-accent uppercase tracking-wider">Blood Camp</span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-accent bg-accent/10 border border-accent/20">Joined</span>
+                  </div>
+                  <div className="flex items-start">
+                    <div className="bg-accent/10 rounded-xl p-2 flex flex-col items-center justify-center min-w-[56px] border border-accent/20">
+                      <span className="text-[10px] font-bold text-accent uppercase">{getMonthAbbr(camp.date)}</span>
+                      <span className="text-lg font-bold text-accent">{getDayStr(camp.date)}</span>
+                    </div>
+                    <div className="ml-3">
+                      <h4 className="font-bold text-sm text-text-primary leading-tight">{camp.title}</h4>
+                      <p className="text-xs text-text-secondary flex items-center mt-1.5"><Users className="w-3 h-3 mr-1 shrink-0"/> {camp.organizerName}</p>
+                      <p className="text-xs text-text-secondary flex items-center mt-1"><Calendar className="w-3 h-3 mr-1 shrink-0"/> {new Date(camp.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                      <p className="text-xs text-text-secondary flex items-center mt-1"><MapPin className="w-3 h-3 mr-1 shrink-0"/> {camp.location}</p>
+                    </div>
+                  </div>
+               </div>
+             ))}
+
           </motion.div>
         ) : (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="bg-surface p-6 rounded-2xl border border-border shadow-sm flex flex-col justify-between">
             <div>
-              <h3 className="font-bold text-text-primary mb-6 flex items-center justify-between">Upcoming Appointment</h3>
+              <h3 className="font-bold text-text-primary mb-6 flex items-center justify-between">Upcoming Schedules</h3>
               <div className="flex flex-col items-center justify-center py-6 text-center">
                 <CalendarClock className="w-12 h-12 text-text-secondary opacity-40 mb-3" />
-                <p className="font-medium text-text-primary">No Scheduled Appointment</p>
-                <p className="text-xs text-text-secondary mt-1 px-4">You have no upcoming blood donations. Schedule one to make a difference!</p>
+                <p className="font-medium text-text-primary">No Scheduled Events</p>
+                <p className="text-xs text-text-secondary mt-1 px-4">You have no upcoming blood donations or camps. Schedule one to make a difference!</p>
               </div>
             </div>
-          <button 
-              type="button" 
-              onClick={() => {
-                if (onCooldown) {
-                  showToast(`⏳ Cooldown Active: You can donate again in ${daysUntilEligible} day${daysUntilEligible === 1 ? '' : 's'}${eligibleDateStr ? ` (eligible on ${eligibleDateStr})` : ''}.`, 'error');
-                  return;
-                }
-                setScheduleDate(new Date().toISOString().split('T')[0]);
-                setScheduleTime('10:00 AM - 10:30 AM');
-                setIsScheduleOpen(true);
-              }} 
-              className={`w-full font-medium py-2 rounded-lg text-sm transition-colors mt-4 cursor-pointer ${
-                onCooldown
-                  ? 'bg-amber-100 text-amber-700 border border-amber-300 hover:bg-amber-200'
-                  : 'bg-primary text-white hover:bg-primary-dark'
-              }`}
-            >
-              {onCooldown ? `⏳ Cooldown — ${daysUntilEligible} days remaining` : 'Schedule Appointment'}
-            </button>
+            <button 
+                type="button" 
+                onClick={() => {
+                  if (onCooldown) {
+                    showToast(`⏳ Cooldown Active: You can donate again in ${daysUntilEligible} day${daysUntilEligible === 1 ? '' : 's'}${eligibleDateStr ? ` (eligible on ${eligibleDateStr})` : ''}.`, 'error');
+                    return;
+                  }
+                  setScheduleDate(new Date().toISOString().split('T')[0]);
+                  setScheduleTime('10:00 AM - 10:30 AM');
+                  setIsScheduleOpen(true);
+                }} 
+                className={`w-full font-medium py-2 rounded-lg text-sm transition-colors mt-4 cursor-pointer ${
+                  onCooldown
+                    ? 'bg-amber-100 text-amber-700 border border-amber-300 hover:bg-amber-200'
+                    : 'bg-primary text-white hover:bg-primary-dark'
+                }`}
+              >
+                {onCooldown ? `⏳ Cooldown — ${daysUntilEligible} days remaining` : 'Schedule Appointment'}
+              </button>
           </motion.div>
         )}
 
@@ -1277,7 +1376,7 @@ const DonorDashboard: React.FC = () => {
                   <div>
                     <p className="text-[10px] text-text-secondary uppercase tracking-wider font-bold">Hospital Location</p>
                     <p className="text-sm font-bold text-text-primary mt-1 flex items-center gap-1">
-                      <MapPin className="w-3 h-3 text-critical shrink-0" /> {activeSOSRequest.hospitalName}
+                      <MapPin className="w-3 h-3 text-critical shrink-0" /> {activeSOSRequest.hospitalAddress}
                     </p>
                   </div>
                 </div>
@@ -1397,28 +1496,7 @@ const DonorDashboard: React.FC = () => {
                               </div>
                             </div>
                             
-                            <div className="flex flex-col gap-2 shrink-0">
-                              {resp.responderPhone && (
-                                <a 
-                                  href={`tel:${resp.responderPhone}`}
-                                  className="p-2 bg-gray-50 border border-border hover:bg-gray-100 rounded-lg text-text-primary hover:text-primary transition-colors flex items-center justify-center"
-                                  title="Call Responder"
-                                >
-                                  <Phone className="w-4 h-4" />
-                                </a>
-                              )}
-                              <button 
-                                type="button" 
-                                onClick={() => {
-                                  setIsSOSTrackerOpen(false);
-                                  openChat();
-                                }}
-                                className="p-2 bg-gray-50 border border-border hover:bg-gray-100 rounded-lg text-text-primary hover:text-accent transition-colors flex items-center justify-center cursor-pointer"
-                                title="Chat with Responder"
-                              >
-                                <MessageSquare className="w-4 h-4" />
-                              </button>
-                            </div>
+
                           </motion.div>
                         );
                       })}
@@ -1623,6 +1701,21 @@ const DonorDashboard: React.FC = () => {
                         <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
                       </label>
                     </div>
+
+                    <div className="mt-4">
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">Pin Your Location</label>
+                      <div className="h-48 w-full rounded-xl overflow-hidden border border-border">
+                        <MapContainer 
+                          center={editCoordinates || [30.7333, 76.7794]} 
+                          zoom={editCoordinates ? 13 : 11} 
+                          scrollWheelZoom={true} 
+                          className="w-full h-full"
+                        >
+                          <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+                          <LocationPicker position={editCoordinates} setPosition={setEditCoordinates} />
+                        </MapContainer>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex gap-2 mt-8">
@@ -1708,7 +1801,7 @@ const DonorDashboard: React.FC = () => {
                       <div className="mt-2 space-y-1.5">
                         <p className="text-xs text-text-secondary flex items-center gap-1.5">
                           <MapPin className="w-3.5 h-3.5 text-critical shrink-0" /> 
-                          <span className="font-medium">{req.hospitalName}</span>
+                          <span className="font-medium">{req.hospitalAddress}</span>
                         </p>
                         {req.unitsRequired && (
                           <p className="text-xs text-text-secondary flex items-center gap-1.5">

@@ -11,7 +11,7 @@ const LeaderboardPreview: React.FC = () => {
   useEffect(() => {
     fetch(`${API_URL}/donors/leaderboard`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setTopDonors(data.slice(0, 5)))
+      .then((data) => setTopDonors(data.slice(0, 3)))
       .catch(() => setTopDonors([]));
   }, []);
 

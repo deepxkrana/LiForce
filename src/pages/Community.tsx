@@ -1,18 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, MessageSquare, Tent, MapPin, Clock, Plus, Filter, Users, ChevronRight, Activity, BellRing, CheckCircle, X, Feather } from 'lucide-react';
-import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
+import { Heart, Tent, MapPin, Clock, Users, Activity, CheckCircle, X, Feather, Share2 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { API_URL } from '../lib/api';
 import { useToast } from '../components/ToastProvider';
 
 const FORUM_CATEGORIES = [
-  { name: 'General', icon: <MessageSquare className="w-5 h-5 text-gray-500" />, active: true },
-  { name: 'Donation Tips', icon: <Heart className="w-5 h-5 text-primary" />, active: false },
+  { name: 'Donation Tips', icon: <Heart className="w-5 h-5 text-primary" />, active: true },
   { name: 'Health & Wellness', icon: <Activity className="w-5 h-5 text-accent" />, active: false },
   { name: 'Blood Bank News', icon: <Tent className="w-5 h-5 text-blue-500" />, active: false },
-  { name: 'Emergency Support', icon: <BellRing className="w-5 h-5 text-warning" />, active: false },
 ];
 
 const MIN_CHARS = 130;
@@ -23,18 +19,25 @@ const Community: React.FC = () => {
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
 
+  const getFormattedTab = (param: string | null) => {
+    if (!param) return null;
+    return param.charAt(0).toUpperCase() + param.slice(1).toLowerCase();
+  };
+
   const [activeTab, setActiveTab] = useState<'Stories' | 'Forums' | 'Camps'>(() => {
-    if (tabParam === 'Stories' || tabParam === 'Forums' || tabParam === 'Camps') return tabParam;
+    const formatted = getFormattedTab(tabParam);
+    if (formatted === 'Stories' || formatted === 'Forums' || formatted === 'Camps') return formatted as any;
     return 'Stories';
   });
 
   useEffect(() => {
-    if (tabParam === 'Stories' || tabParam === 'Forums' || tabParam === 'Camps') {
-      setActiveTab(tabParam);
+    const formatted = getFormattedTab(tabParam);
+    if (formatted === 'Stories' || formatted === 'Forums' || formatted === 'Camps') {
+      setActiveTab(formatted as any);
     }
   }, [tabParam]);
 
-  const [activeCategory, setActiveCategory] = useState('General');
+  const [activeCategory, setActiveCategory] = useState('Donation Tips');
   const [posts, setPosts] = useState<any[]>([]);
   const [camps, setCamps] = useState<any[]>([]);
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
@@ -46,8 +49,29 @@ const Community: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Camp RSVP Modal state
+  const [selectedCampId, setSelectedCampId] = useState<string | null>(null);
+  const [donorLastDonatedAt, setDonorLastDonatedAt] = useState<string | null>(null);
+  const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
+
+  const isDonorEligible = React.useMemo(() => {
+    if (!donorLastDonatedAt) return true;
+    const daysSince = (new Date().getTime() - new Date(donorLastDonatedAt).getTime()) / (1000 * 3600 * 24);
+    return daysSince >= 56;
+  }, [donorLastDonatedAt]);
+
   const userRole = localStorage.getItem('liforce_role');
   const isLoggedIn = !!localStorage.getItem('liforce_token');
+
+  const currentUserId = (() => {
+    const token = localStorage.getItem('liforce_token');
+    if (!token) return null;
+    try {
+      return JSON.parse(atob(token.split('.')[1]))?.id || null;
+    } catch {
+      return null;
+    }
+  })();
 
   useEffect(() => {
     const fetchCommunityData = async () => {
@@ -57,12 +81,22 @@ const Community: React.FC = () => {
 
         const campsRes = await fetch(`${API_URL}/community/camps`);
         if (campsRes.ok) setCamps(await campsRes.json());
+
+        if (isLoggedIn) {
+          const rsvpsRes = await fetch(`${API_URL}/camps/my-rsvps`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('liforce_token')}` }
+          });
+          if (rsvpsRes.ok) {
+            const data = await rsvpsRes.json();
+            setRsvpCamps(new Set(data.rsvps));
+          }
+        }
       } catch (err) {
         console.error('Failed to fetch community data', err);
       }
     };
     fetchCommunityData();
-  }, []);
+  }, [isLoggedIn]);
 
   // Auto-focus textarea when modal opens
   useEffect(() => {
@@ -72,6 +106,78 @@ const Community: React.FC = () => {
       setStoryText('');
     }
   }, [isStoryModalOpen]);
+
+  const handleJoinClick = async (campId: string) => {
+    if (!isLoggedIn) {
+      showToast('Please log in to join camps.', 'error');
+      return;
+    }
+    setSelectedCampId(campId);
+    if (userRole === 'donor') {
+      setIsCheckingEligibility(true);
+      try {
+        const res = await fetch(`${API_URL}/donors/me`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('liforce_token')}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setDonorLastDonatedAt(data.lastDonatedAt);
+        }
+      } catch (e) {}
+      setIsCheckingEligibility(false);
+    }
+  };
+
+  const handleConfirmJoin = async (role: 'donor' | 'volunteer') => {
+    if (!selectedCampId) return;
+    const token = localStorage.getItem('liforce_token');
+    try {
+      const res = await fetch(`${API_URL}/camps/${selectedCampId}/rsvp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ role })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to join camp');
+
+      setRsvpCamps((prev) => new Set(prev).add(selectedCampId));
+      setCamps(prev => prev.map(c => c.id === selectedCampId ? { ...c, rsvps: c.rsvps + 1 } : c));
+      showToast('Successfully joined camp!', 'success');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setSelectedCampId(null);
+    }
+  };
+
+  const handleCancelRsvp = async (campId: string) => {
+    const token = localStorage.getItem('liforce_token');
+    try {
+      const res = await fetch(`${API_URL}/camps/${campId}/rsvp`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!res.ok) {
+         const data = await res.json();
+         throw new Error(data.error || 'Failed to cancel');
+      }
+      setRsvpCamps((prev) => {
+        const next = new Set(prev);
+        next.delete(campId);
+        return next;
+      });
+      setCamps(prev => prev.map(c => c.id === campId ? { ...c, rsvps: Math.max(0, c.rsvps - 1) } : c));
+      showToast(`Cancelled attendance.`, 'info');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
 
   const handleShareStoryClick = () => {
     if (!isLoggedIn) {
@@ -133,8 +239,7 @@ const Community: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col pt-20">
-      <Navbar />
-
+      
       {/* Header */}
       <div className="bg-surface border-b border-border py-12 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-primary-light rounded-full -mr-32 -mt-32 opacity-50 blur-3xl"></div>
@@ -266,14 +371,7 @@ const Community: React.FC = () => {
               {/* Left Sidebar - Categories */}
               <div className="w-full lg:w-1/4">
                 <div className="bg-surface rounded-2xl border border-border shadow-sm p-4 sticky top-40">
-                  <button
-                    type="button"
-                    onClick={() => showToast('New thread started in ' + activeCategory + '.', 'success')}
-                    className="w-full bg-primary text-white px-4 py-3 rounded-xl font-bold hover:bg-primary-dark transition-colors shadow-sm flex items-center justify-center mb-6"
-                  >
-                    <Plus className="w-5 h-5 mr-2" /> Start a thread
-                  </button>
-                  <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-3 px-3">Categories</h3>
+                  <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-3 px-3">Knowledge Base</h3>
                   <div className="space-y-1">
                     {FORUM_CATEGORIES.map(cat => (
                       <button
@@ -293,47 +391,63 @@ const Community: React.FC = () => {
                 </div>
               </div>
 
-              {/* Right Content - Thread List */}
+              {/* Right Content - Knowledge Base Content */}
               <div className="w-full lg:w-3/4">
                 <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold text-text-primary">{activeCategory} Discussions</h2>
-                  <button
-                    type="button"
-                    onClick={() => showToast('Showing latest threads in ' + activeCategory, 'info')}
-                    className="flex items-center text-sm font-bold text-text-secondary hover:text-primary border border-border px-3 py-1.5 rounded-lg bg-surface"
-                  >
-                    <Filter className="w-4 h-4 mr-2" /> Filter
-                  </button>
+                  <h2 className="text-2xl font-bold text-text-primary">{activeCategory}</h2>
                 </div>
 
-                <div className="bg-surface rounded-2xl border border-border shadow-sm overflow-hidden">
-                  {posts.map((thread) => (
-                    <div key={thread.id} className="flex items-center p-5 border-b border-border last:border-0 hover:bg-gray-50 transition-colors cursor-pointer group">
-                      <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-text-secondary font-bold mr-4 shrink-0 group-hover:bg-primary group-hover:text-white transition-colors">
-                        {thread.authorInitials || thread.authorName[0]}
-                      </div>
-                      <div className="flex-grow min-w-0 pr-4">
-                        <h3 className="font-bold text-text-primary text-lg truncate group-hover:text-primary transition-colors">{thread.content.substring(0, 50)}...</h3>
-                        <div className="flex items-center text-xs text-text-secondary mt-1">
-                          <span className="font-medium mr-3">{thread.authorName}</span>
-                          <span className="flex items-center"><Clock className="w-3 h-3 mr-1" /> {new Date(thread.createdAt).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-center shrink-0 w-16">
-                        <span className="text-lg font-bold text-text-primary">{thread.likes}</span>
-                        <span className="text-[10px] uppercase font-bold text-text-secondary">Likes</span>
-                      </div>
-                      <div className="hidden sm:flex ml-4 shrink-0 text-gray-300 group-hover:text-primary transition-colors">
-                        <ChevronRight className="w-6 h-6" />
-                      </div>
+                {activeCategory === 'Donation Tips' && (
+                  <div className="space-y-6">
+                    <div className="bg-surface p-6 rounded-2xl border border-border shadow-sm hover:shadow-md transition-shadow">
+                      <h3 className="font-bold text-xl text-text-primary mb-3">Preparing for Your Donation</h3>
+                      <p className="text-text-secondary leading-relaxed mb-4">A successful blood donation starts before you even arrive at the clinic. Follow these tips to ensure a smooth experience:</p>
+                      <ul className="list-disc pl-5 text-text-secondary space-y-2">
+                        <li>Drink plenty of water (at least 500ml) in the hours leading up to your appointment.</li>
+                        <li>Eat a healthy, low-fat meal. Avoid fatty foods as they can affect the tests done on your blood.</li>
+                        <li>Get a good night's sleep before your donation day.</li>
+                        <li>Wear clothing with sleeves that can easily be rolled up above the elbow.</li>
+                        <li>Bring a valid ID and a list of any medications you are currently taking.</li>
+                      </ul>
                     </div>
-                  ))}
-                  {posts.length === 0 && (
-                    <div className="p-10 text-center text-text-secondary">
-                      No threads found. Be the first to start a discussion!
+                    <div className="bg-surface p-6 rounded-2xl border border-border shadow-sm hover:shadow-md transition-shadow">
+                      <h3 className="font-bold text-xl text-text-primary mb-3">Aftercare Tips</h3>
+                      <p className="text-text-secondary leading-relaxed mb-4">Taking care of yourself after donating is just as important:</p>
+                      <ul className="list-disc pl-5 text-text-secondary space-y-2">
+                        <li>Rest for a few minutes and enjoy the complimentary snacks and drinks provided.</li>
+                        <li>Keep the bandage on for the next several hours.</li>
+                        <li>Avoid strenuous physical activity or heavy lifting for the rest of the day.</li>
+                        <li>If you feel lightheaded, lie down with your feet elevated until the feeling passes.</li>
+                      </ul>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {activeCategory === 'Health & Wellness' && (
+                  <div className="space-y-6">
+                    <div className="bg-surface p-6 rounded-2xl border border-border shadow-sm hover:shadow-md transition-shadow">
+                      <h3 className="font-bold text-xl text-text-primary mb-3">The Importance of Iron</h3>
+                      <p className="text-text-secondary leading-relaxed">Iron is an essential mineral that helps your body make red blood cells. Since donating blood removes some iron from your body, maintaining a healthy iron level is crucial for regular donors. Incorporate iron-rich foods like spinach, red meat, beans, and fortified cereals into your diet. Pairing these with vitamin C-rich foods can enhance iron absorption.</p>
+                    </div>
+                    <div className="bg-surface p-6 rounded-2xl border border-border shadow-sm hover:shadow-md transition-shadow">
+                      <h3 className="font-bold text-xl text-text-primary mb-3">Hydration is Key</h3>
+                      <p className="text-text-secondary leading-relaxed">Your blood volume is primarily made up of water. Staying well-hydrated makes your veins more accessible and helps you recover faster post-donation. Aim to drink an extra 16 ounces of water before your appointment and continue hydrating throughout the day.</p>
+                    </div>
+                  </div>
+                )}
+
+                {activeCategory === 'Blood Bank News' && (
+                  <div className="space-y-6">
+                    <div className="bg-surface p-6 rounded-2xl border border-border shadow-sm hover:shadow-md transition-shadow">
+                      <h3 className="font-bold text-xl text-text-primary mb-3">Current Blood Type Needs</h3>
+                      <p className="text-text-secondary leading-relaxed">While all blood types are always needed, O-negative and O-positive are currently in high demand. O-negative is the universal donor type and is crucial in emergency situations when there's no time to determine a patient's blood type.</p>
+                    </div>
+                    <div className="bg-surface p-6 rounded-2xl border border-border shadow-sm hover:shadow-md transition-shadow">
+                      <h3 className="font-bold text-xl text-text-primary mb-3">Updated Safety Protocols</h3>
+                      <p className="text-text-secondary leading-relaxed">Our partner blood banks have implemented enhanced safety protocols to protect both donors and staff. This includes frequent sanitization of donation stations, mandatory health screenings, and optimized appointment scheduling to minimize wait times and ensure social distancing.</p>
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -352,7 +466,7 @@ const Community: React.FC = () => {
                 {userRole === 'bloodbank' && (
                   <div className="flex gap-3 w-full sm:w-auto">
                     <Link
-                      to="/register-bloodbank"
+                      to="/organise-camp"
                       className="flex-1 sm:flex-none bg-primary text-white px-4 py-2.5 rounded-lg font-bold hover:bg-primary-dark transition-colors shadow-sm flex items-center justify-center"
                     >
                       <Tent className="w-4 h-4 mr-2" /> Organise a camp
@@ -390,15 +504,31 @@ const Community: React.FC = () => {
                       <div className="mt-auto">
                         <div className="flex justify-between text-xs font-bold text-text-secondary mb-2">
                           <span>Spots Filled</span>
-                          <span>{camp.rsvps} Attending</span>
+                          <span>{camp.rsvps} / {camp.capacity || 50} Attending</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
                           <div
-                            className="bg-accent h-2 rounded-full"
-                            style={{ width: `${Math.min(100, (camp.rsvps / 50) * 100)}%` }}
+                            className="bg-accent h-2 rounded-full transition-all duration-500"
+                            style={{ width: `${Math.min(100, (camp.rsvps / (camp.capacity || 50)) * 100)}%` }}
                           ></div>
                         </div>
-                        {rsvpCamps.has(camp.id) ? (
+                        {currentUserId === camp.organizerId ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const text = `Join my upcoming blood donation drive: "${camp.title}" at ${camp.location} on ${new Date(camp.date).toLocaleDateString()}! Let's save lives together on LiForce.`;
+                              if (navigator.share) {
+                                navigator.share({ title: camp.title, text }).catch(() => {});
+                              } else {
+                                navigator.clipboard.writeText(text);
+                                showToast('Share text copied to clipboard!', 'success');
+                              }
+                            }}
+                            className="w-full font-bold py-2.5 rounded-lg border-2 border-primary text-primary hover:bg-primary hover:text-white transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Share2 className="w-4 h-4" /> Share
+                          </button>
+                        ) : rsvpCamps.has(camp.id) ? (
                           <div className="flex items-center gap-2 w-full">
                             <div className="flex-grow flex items-center justify-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-600 font-bold py-2.5 px-3 rounded-lg text-sm shadow-sm select-none">
                               <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
@@ -406,14 +536,7 @@ const Community: React.FC = () => {
                             </div>
                             <button
                               type="button"
-                              onClick={() => {
-                                setRsvpCamps((prev) => {
-                                  const next = new Set(prev);
-                                  next.delete(camp.id);
-                                  return next;
-                                });
-                                showToast(`Cancelled attendance for ${camp.title}.`, 'info');
-                              }}
+                              onClick={() => handleCancelRsvp(camp.id)}
                               className="px-4 py-2.5 rounded-lg font-bold border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 hover:text-red-700 transition-colors text-sm shadow-sm"
                             >
                               Cancel
@@ -422,10 +545,7 @@ const Community: React.FC = () => {
                         ) : (
                           <button
                             type="button"
-                            onClick={() => {
-                              setRsvpCamps((prev) => new Set(prev).add(camp.id));
-                              showToast(`Joined the drive for ${camp.title}!`, 'success');
-                            }}
+                            onClick={() => handleJoinClick(camp.id)}
                             className="w-full font-bold py-2.5 rounded-lg border-2 border-primary text-primary hover:bg-primary hover:text-white transition-colors"
                           >
                             Join Now
@@ -447,8 +567,7 @@ const Community: React.FC = () => {
         </AnimatePresence>
       </div>
 
-      <Footer />
-
+      
       {/* ── Share Your Story Modal ── */}
       <AnimatePresence>
         {isStoryModalOpen && (
@@ -580,6 +699,67 @@ const Community: React.FC = () => {
           </>
         )}
       </AnimatePresence>
+      {/* ── Join Camp Modal ── */}
+      <AnimatePresence>
+        {selectedCampId && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+              onClick={() => setSelectedCampId(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 30 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 30 }}
+              transition={{ type: 'spring', damping: 22, stiffness: 300 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+            >
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm pointer-events-auto overflow-hidden border border-border p-6 flex flex-col gap-4">
+                <div className="flex justify-between items-center mb-2">
+                  <h2 className="text-xl font-extrabold text-text-primary">Join Camp</h2>
+                  <button onClick={() => setSelectedCampId(null)} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-text-secondary">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                
+                {isCheckingEligibility ? (
+                  <div className="py-8 flex justify-center"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+                ) : (
+                  <>
+                    <p className="text-sm text-text-secondary mb-2">How would you like to participate in this blood drive?</p>
+                    
+                    {userRole === 'donor' && (
+                      <button
+                        onClick={() => isDonorEligible && handleConfirmJoin('donor')}
+                        disabled={!isDonorEligible}
+                        className={`w-full py-3 rounded-xl border-2 font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                          isDonorEligible 
+                            ? 'border-primary text-primary hover:bg-primary hover:text-white' 
+                            : 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed opacity-70'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2"><Heart className="w-4 h-4" /> Join as Donor</span>
+                        {!isDonorEligible && <span className="text-[10px] font-normal px-4 text-center">Not eligible yet (56-day cooldown active)</span>}
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => handleConfirmJoin('volunteer')}
+                      className="w-full py-3 rounded-xl border-2 border-accent text-accent font-bold hover:bg-accent hover:text-white transition-all flex items-center justify-center gap-2"
+                    >
+                      <Users className="w-4 h-4" /> Join as Volunteer
+                    </button>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };

@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, MapPin } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Tooltip as LeafletTooltip } from 'react-leaflet';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { API_URL } from '../lib/api';
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
@@ -36,14 +37,24 @@ const MAJOR_INDIAN_CITIES = [
 const createCustomIcon = (color: string) =>
   L.divIcon({
     className: 'my-custom-pin',
-    iconAnchor: [0, 12],
-    popupAnchor: [0, -24],
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -12],
     html: `<span style="background-color:${color};width:24px;height:24px;display:block;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.15);" />`,
   });
 
 const iconGood = createCustomIcon('#1D9E75');
 const iconWarning = createCustomIcon('#E67E22');
 const iconCritical = createCustomIcon('#E24B4A');
+
+const orangeIcon = L.divIcon({
+  className: "custom-pin-user",
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+  popupAnchor: [0, -12],
+  tooltipAnchor: [0, -12],
+  html: `<span style="background-color: #F59E0B; width: 24px; height: 24px; display: block; border-radius: 50%; border: 3px solid #FFFFFF; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"></span>`
+});
 
 const getBankMarkerIcon = (status: string) => {
   if (status === 'Critical') return iconCritical;
@@ -125,11 +136,21 @@ const DEFAULT_BANKS = [
   }
 ];
 
+const ChangeMapView: React.FC<{ center: [number, number] }> = ({ center }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, map.getZoom());
+  }, [center, map]);
+  return null;
+};
+
 const HeroSection: React.FC = () => {
   const navigate = useNavigate();
   const [bloodGroup, setBloodGroup] = useState('');
   const [location, setLocation] = useState('');
+  const userRole = localStorage.getItem('liforce_role');
   const [banks, setBanks] = useState<any[]>(DEFAULT_BANKS);
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [showCityDropdown, setShowCityDropdown] = useState(false);
   const cityDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -140,6 +161,48 @@ const HeroSection: React.FC = () => {
       (c) => c.name.toLowerCase().includes(query) || c.pincode.includes(query)
     );
   }, [location]);
+
+  useEffect(() => {
+    const fetchUserLocation = async () => {
+      const token = localStorage.getItem('liforce_token');
+      const role = localStorage.getItem('liforce_role');
+      
+      if (token && role) {
+        try {
+          const endpoint = role === 'bloodbank' ? '/bloodbanks/me/dashboard' : '/donors/me';
+          const res = await fetch(`${API_URL}${endpoint}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const userData = role === 'bloodbank' ? data.bank : data;
+            
+            if (userData?.latitude && userData?.longitude) {
+              setUserLocation([userData.latitude, userData.longitude]);
+              return; 
+            } else if (role === 'bloodbank') {
+              // Blood banks are fixed facilities. Prevent falling back to browser GPS 
+              // which could be different. Use the same fallback as fetchBanks to perfectly overlap.
+              setUserLocation([30.7333, 76.7794]);
+              return;
+            }
+          }
+        } catch (e) {
+          console.error('Failed to fetch user location from DB', e);
+        }
+      }
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            setUserLocation([position.coords.latitude, position.coords.longitude]);
+          },
+          (error) => console.warn('Geolocation blocked or failed:', error)
+        );
+      }
+    };
+    fetchUserLocation();
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -160,7 +223,7 @@ const HeroSection: React.FC = () => {
         if (!response.ok) throw new Error('API error');
         const data = await response.json();
         if (Array.isArray(data) && data.length > 0) {
-          const formatted = data.map((b: any) => {
+          let formatted = data.map((b: any) => {
             let overallStatus = 'Good';
             if (b.inventory?.length) {
               const criticalCount = b.inventory.filter((i: any) => i.status === 'Critical').length;
@@ -183,6 +246,13 @@ const HeroSection: React.FC = () => {
               })),
             };
           });
+
+          if (formatted.length < 3) {
+            const padCount = 3 - formatted.length;
+            const mockBanks = DEFAULT_BANKS.slice(0, padCount).map(b => ({ ...b }));
+            formatted = [...formatted, ...mockBanks];
+          }
+
           setBanks(formatted);
         }
       } catch (error) {
@@ -195,6 +265,39 @@ const HeroSection: React.FC = () => {
   const [alerts, setAlerts] = useState<ActiveAlert[]>(INITIAL_ALERTS);
 
   useEffect(() => {
+    const centerLat = userLocation?.[0] || 30.7333;
+    const centerLng = userLocation?.[1] || 76.7794;
+
+    // Immediately snap any mock banks to the new center
+    setBanks(prevBanks => {
+      if (prevBanks.some(b => b.id?.toString().startsWith('default'))) {
+        return prevBanks.map((bank, index) => {
+          if (bank.id?.toString().startsWith('default')) {
+            const offsets = [
+              { lat: 0.015, lng: 0.02 },
+              { lat: -0.02, lng: 0.01 },
+              { lat: 0.01, lng: -0.02 }
+            ];
+            const offset = offsets[index % 3];
+            return {
+              ...bank,
+              lat: centerLat + offset.lat,
+              lng: centerLng + offset.lng
+            };
+          }
+          return bank;
+        });
+      }
+      return prevBanks;
+    });
+
+    // Immediately snap existing alerts to the new center
+    setAlerts(prev => prev.map(a => ({
+      ...a,
+      lat: centerLat + (Math.random() - 0.5) * 0.06,
+      lng: centerLng + (Math.random() - 0.5) * 0.06,
+    })));
+
     const interval = setInterval(() => {
       setAlerts((prevAlerts) => {
         const indexToUpdate = Math.floor(Math.random() * prevAlerts.length);
@@ -209,8 +312,8 @@ const HeroSection: React.FC = () => {
         
         nextAlerts[indexToUpdate] = {
           id: prevAlerts[indexToUpdate].id,
-          lat: 30.7333 + latOffset,
-          lng: 76.7794 + lngOffset,
+          lat: centerLat + latOffset,
+          lng: centerLng + lngOffset,
           group: randomGroup,
           status: randomStatus,
         };
@@ -220,7 +323,7 @@ const HeroSection: React.FC = () => {
     }, 4000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [userLocation]);
 
   const handleSearch = () => {
     const params = new URLSearchParams();
@@ -280,15 +383,34 @@ const HeroSection: React.FC = () => {
               transition={{ delay: 1, duration: 0.5 }}
               className="flex flex-wrap gap-3 mb-10 w-full"
             >
-              <Link to="/donate-blood" className="px-6 py-3 rounded-lg bg-primary text-white font-medium hover:bg-primary-dark transition-colors shadow-sm">
-                Donate blood
-              </Link>
-              <Link to="/emergency" className="px-6 py-3 rounded-lg border border-accent text-accent font-medium hover:bg-[#E8F5F1] transition-colors shadow-sm">
-                I need blood
-              </Link>
-              <Link to="/find-blood" className="px-6 py-3 rounded-lg border border-border text-text-primary font-medium hover:bg-gray-50 transition-colors shadow-sm">
-                Find blood bank
-              </Link>
+              {userRole === 'bloodbank' ? (
+                <>
+                  <Link to="/find-donors" className="px-6 py-3 rounded-lg bg-primary text-white font-medium hover:bg-primary-dark transition-colors shadow-sm">
+                    Find donors
+                  </Link>
+                  <Link to="/find-blood" className="px-6 py-3 rounded-lg border border-border text-text-primary font-medium hover:bg-gray-50 transition-colors shadow-sm">
+                    Find blood bank
+                  </Link>
+                  <Link to="/community?tab=camps" className="px-6 py-3 rounded-lg border border-border text-text-primary font-medium hover:bg-gray-50 transition-colors shadow-sm">
+                    Join camps
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link to="/donate-blood" className="px-6 py-3 rounded-lg bg-primary text-white font-medium hover:bg-primary-dark transition-colors shadow-sm">
+                    Donate blood
+                  </Link>
+                  <Link to="/emergency" className="px-6 py-3 rounded-lg border border-accent text-accent font-medium hover:bg-[#E8F5F1] transition-colors shadow-sm">
+                    I need blood
+                  </Link>
+                  <Link to="/find-blood" className="px-6 py-3 rounded-lg border border-border text-text-primary font-medium hover:bg-gray-50 transition-colors shadow-sm">
+                    Find blood bank
+                  </Link>
+                  <Link to="/community?tab=camps" className="px-6 py-3 rounded-lg border border-border text-text-primary font-medium hover:bg-gray-50 transition-colors shadow-sm">
+                    Join camps
+                  </Link>
+                </>
+              )}
             </motion.div>
 
             <motion.div
@@ -387,9 +509,9 @@ const HeroSection: React.FC = () => {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.5, duration: 0.8 }}
-            className="w-full lg:w-[42%] relative"
+            className="w-full lg:w-[42%] relative flex flex-col"
           >
-            <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm relative aspect-square md:aspect-auto md:min-h-[460px] flex flex-col">
+            <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm relative aspect-square md:aspect-auto h-full min-h-[460px] flex flex-col">
               {/* Floating Overlay Header */}
               <div className="absolute top-6 left-6 bg-surface/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-border shadow-md flex items-center z-[1000]">
                 <span className="relative flex h-2.5 w-2.5 mr-2">
@@ -400,14 +522,31 @@ const HeroSection: React.FC = () => {
               </div>
 
               {/* Map Container */}
-              <div className="w-full flex-grow rounded-xl overflow-hidden border border-border h-[380px] md:h-full z-10 relative animate-fade-in">
+              <div className="w-full flex-grow rounded-xl overflow-hidden border border-border relative animate-fade-in min-h-[380px]">
                 <MapContainer
-                  center={[30.7333, 76.7794]}
+                  center={userLocation || [30.7333, 76.7794]}
                   zoom={12}
+                  dragging={false}
+                  touchZoom={false}
+                  doubleClickZoom={false}
                   scrollWheelZoom={false}
-                  className="w-full h-full"
+                  boxZoom={false}
+                  keyboard={false}
+                  zoomControl={false}
+                  style={{ height: '100%', minHeight: '380px', width: '100%' }}
+                  className="absolute inset-0 z-0"
                 >
+                  {userLocation && <ChangeMapView center={userLocation} />}
                   <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+                  
+                  {userLocation && (
+                    <Marker position={userLocation} icon={orangeIcon} zIndexOffset={1000}>
+                      <LeafletTooltip direction="top" opacity={1} permanent={false}>
+                        <span className="font-bold">You</span>
+                      </LeafletTooltip>
+                    </Marker>
+                  )}
+
                   {banks.map((bank) => (
                     <Marker
                       key={bank.id}

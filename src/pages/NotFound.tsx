@@ -1,12 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
 
 const NotFound: React.FC = () => (
   <div className="min-h-screen flex flex-col bg-background pt-20">
-    <Navbar />
-    <main className="flex-grow flex flex-col items-center justify-center px-4 py-16 text-center">
+        <main className="flex-grow flex flex-col items-center justify-center px-4 py-16 text-center">
       <p className="text-6xl font-bold text-primary mb-4">404</p>
       <h1 className="text-2xl font-bold text-text-primary mb-2">Page not found</h1>
       <p className="text-text-secondary mb-8 max-w-md">
@@ -27,8 +24,7 @@ const NotFound: React.FC = () => (
         </Link>
       </div>
     </main>
-    <Footer />
-  </div>
+      </div>
 );
 
 export default NotFound;

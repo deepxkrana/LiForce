@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import Navbar from '../components/Navbar';
 import { ArrowRight, CheckCircle, Mail } from 'lucide-react';
 import { API_URL } from '../lib/api';
 
@@ -14,6 +13,14 @@ const Login: React.FC = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem('liforce_token');
+    const role = localStorage.getItem('liforce_role');
+    if (token && role) {
+      navigate(role === 'bloodbank' ? '/dashboard/bloodbank' : '/dashboard/donor', { replace: true });
+    }
+  }, [navigate]);
 
   const handleInitiate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,8 +85,7 @@ const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col pt-20">
-      <Navbar />
-      
+            
       <div className="flex-grow flex items-center justify-center p-4">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}

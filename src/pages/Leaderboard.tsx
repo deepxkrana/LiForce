@@ -2,44 +2,51 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Crown, MapPin, Info, Star } from 'lucide-react';
-import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
 import { API_URL } from '../lib/api';
 
 // Keep constants for points guide and camps
 const POINTS_GUIDE = [
-  { action: 'Successful Donation', points: 200 },
-  { action: 'Emergency Response', points: 300 },
+  { action: 'Successful Donation', points: 100 },
+  { action: 'Emergency Response', points: 100 },
   { action: 'Profile Completion', points: 50 },
-  { action: 'Camp Attendance', points: 150 },
+  { action: 'Camp Attendance', points: 50 },
 ];
 
-const UPCOMING_CAMPS = [
-  { title: 'Rotary Club Drive', date: 'Oct 28', loc: 'Sector 17, Chd' },
-  { title: 'University Blood Fest', date: 'Nov 02', loc: 'PU Campus' },
-  { title: 'Tech Park Camp', date: 'Nov 15', loc: 'IT Park, Chd' },
-];
+// Removed hardcoded UPCOMING_CAMPS
 
 const Leaderboard: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('This month');
-  const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
+  const [leaderboardType, setLeaderboardType] = useState<'donors' | 'bloodbanks'>('donors');
+  const [donorData, setDonorData] = useState<any[]>([]);
+  const [bankData, setBankData] = useState<any[]>([]);
+  const [camps, setCamps] = useState<any[]>([]);
   const [bloodGroupFilter, setBloodGroupFilter] = useState('');
   const tabs = ['This month', 'All time', 'By city', 'By blood group'];
 
   useEffect(() => {
-    const fetchLeaderboard = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch(`${API_URL}/donors/leaderboard`);
-        if (response.ok) {
-          const data = await response.json();
-          setLeaderboardData(data);
+        const [donorRes, bankRes, campsRes] = await Promise.all([
+          fetch(`${API_URL}/donors/leaderboard`),
+          fetch(`${API_URL}/bloodbanks/leaderboard`),
+          fetch(`${API_URL}/community/camps`)
+        ]);
+        
+        if (donorRes.ok) {
+          setDonorData(await donorRes.json());
+        }
+        if (bankRes.ok) {
+          setBankData(await bankRes.json());
+        }
+        if (campsRes.ok) {
+          setCamps(await campsRes.json());
         }
       } catch (error) {
-        console.error("Failed to fetch leaderboard", error);
+        console.error("Failed to fetch data", error);
       }
     };
-    fetchLeaderboard();
+    fetchData();
   }, []);
 
   const getBadge = (points: number) => {
@@ -53,19 +60,24 @@ const Leaderboard: React.FC = () => {
   const getInitials = (name: string) => name.substring(0, 2).toUpperCase();
 
   const filteredData = useMemo(() => {
-    let list = [...leaderboardData];
+    let list = leaderboardType === 'donors' ? [...donorData] : [...bankData];
+    
     if (activeTab === 'By city') {
-      list = list.filter((d) => d.city);
-      list.sort((a, b) => (a.city || '').localeCompare(b.city || ''));
+      list = list.filter((d) => d.city || d.address);
+      list.sort((a, b) => ((a.city || a.address) || '').localeCompare((b.city || b.address) || ''));
     }
-    if (activeTab === 'By blood group' && bloodGroupFilter) {
+    if (activeTab === 'By blood group' && bloodGroupFilter && leaderboardType === 'donors') {
       list = list.filter((d) => d.bloodGroup === bloodGroupFilter);
     }
     if (activeTab === 'All time') {
-      list.sort((a, b) => (b.rewardPoints || 0) - (a.rewardPoints || 0));
+      list.sort((a, b) => {
+        const scoreA = a.rewardPoints || 0;
+        const scoreB = b.rewardPoints || 0;
+        return scoreB - scoreA;
+      });
     }
     return list;
-  }, [leaderboardData, activeTab, bloodGroupFilter]);
+  }, [donorData, bankData, leaderboardType, activeTab, bloodGroupFilter]);
 
   const topDonors = filteredData.slice(0, 3);
   const TOP_3 = [];
@@ -74,8 +86,9 @@ const Leaderboard: React.FC = () => {
       ...topDonors[1],
       rank: 2,
       donations: topDonors[1]?._count?.donations || 0,
-      badge: getBadge(topDonors[1].rewardPoints),
+      badge: leaderboardType === 'donors' ? getBadge(topDonors[1].rewardPoints) : 'Verified Bank',
       initials: getInitials(topDonors[1].name),
+      points: topDonors[1].rewardPoints || 0,
       color: 'bg-gray-200 border-gray-400', textColor: 'text-gray-600'
     });
   }
@@ -84,9 +97,10 @@ const Leaderboard: React.FC = () => {
       ...topDonors[0],
       rank: 1,
       donations: topDonors[0]?._count?.donations || 0,
-      badge: getBadge(topDonors[0].rewardPoints),
+      badge: leaderboardType === 'donors' ? getBadge(topDonors[0].rewardPoints) : 'Verified Bank',
       initials: getInitials(topDonors[0].name),
-      color: 'bg-yellow-100 border-yellow-400', textColor: 'text-yellow-600'
+      points: topDonors[0].rewardPoints || 0,
+      color: 'bg-yellow-100 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)] z-10', textColor: 'text-yellow-600'
     });
   }
   if (topDonors.length > 2) {
@@ -94,8 +108,9 @@ const Leaderboard: React.FC = () => {
       ...topDonors[2],
       rank: 3,
       donations: topDonors[2]?._count?.donations || 0,
-      badge: getBadge(topDonors[2].rewardPoints),
+      badge: leaderboardType === 'donors' ? getBadge(topDonors[2].rewardPoints) : 'Verified Bank',
       initials: getInitials(topDonors[2].name),
+      points: topDonors[2].rewardPoints || 0,
       color: 'bg-orange-100 border-orange-400', textColor: 'text-orange-600'
     });
   }
@@ -110,14 +125,14 @@ const Leaderboard: React.FC = () => {
     ...d,
     rank: index + 4,
     donations: d?._count?.donations || 0,
-    badge: getBadge(d.rewardPoints),
+    points: d.rewardPoints || 0,
+    badge: leaderboardType === 'donors' ? getBadge(d.rewardPoints) : 'Verified Bank',
     isUser: false, // Could check against current logged in user ID
   }));
 
   return (
     <div className="min-h-screen bg-background flex flex-col pt-20">
-      <Navbar />
-      
+            
       {/* Header */}
       <div className="bg-primary text-white py-12 border-b border-primary-dark">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -135,6 +150,28 @@ const Leaderboard: React.FC = () => {
         {/* Main Content */}
         <div className="w-full lg:w-2/3 xl:w-3/4">
           
+          {/* Toggle Type */}
+          <div className="flex bg-white rounded-xl border border-border p-1 mb-8 w-fit shadow-sm">
+            <button
+              type="button"
+              onClick={() => setLeaderboardType('donors')}
+              className={`px-6 py-2.5 rounded-lg font-bold text-sm transition-colors ${
+                leaderboardType === 'donors' ? 'bg-primary text-white shadow' : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              Top Donors
+            </button>
+            <button
+              type="button"
+              onClick={() => setLeaderboardType('bloodbanks')}
+              className={`px-6 py-2.5 rounded-lg font-bold text-sm transition-colors ${
+                leaderboardType === 'bloodbanks' ? 'bg-primary text-white shadow' : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              Top Blood Banks
+            </button>
+          </div>
+
           {/* Filters */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 pb-4 mb-6">
             <div className="flex overflow-x-auto hide-scrollbar gap-2">
@@ -153,7 +190,7 @@ const Leaderboard: React.FC = () => {
                 </button>
               ))}
             </div>
-            {activeTab === 'By blood group' && (
+            {activeTab === 'By blood group' && leaderboardType === 'donors' && (
               <select
                 value={bloodGroupFilter}
                 onChange={(e) => setBloodGroupFilter(e.target.value)}
@@ -194,9 +231,13 @@ const Leaderboard: React.FC = () => {
                 
                 <h3 className="font-bold text-lg text-text-primary">{donor.name}</h3>
                 <div className="flex items-center text-xs text-text-secondary mt-1 mb-3">
-                  <MapPin className="w-3 h-3 mr-1" /> {donor.city || 'Unknown'}
-                  <span className="mx-2">•</span>
-                  <span className="font-bold text-primary">{donor.bloodGroup || donor.bg}</span>
+                  <MapPin className="w-3 h-3 mr-1 shrink-0" /> <span className="truncate max-w-[150px]">{donor.city || donor.address || 'Unknown'}</span>
+                  {leaderboardType === 'donors' && (
+                    <>
+                      <span className="mx-2">•</span>
+                      <span className="font-bold text-primary">{donor.bloodGroup || donor.bg}</span>
+                    </>
+                  )}
                 </div>
                 
                 <span className="px-3 py-1 bg-gray-100 rounded-full text-xs font-semibold mb-4 text-text-primary">
@@ -224,8 +265,8 @@ const Leaderboard: React.FC = () => {
                 <thead>
                   <tr className="bg-gray-50 border-b border-border text-xs uppercase tracking-wider text-text-secondary">
                     <th className="py-4 px-6 font-bold w-16 text-center">Rank</th>
-                    <th className="py-4 px-6 font-bold">Donor</th>
-                    <th className="py-4 px-6 font-bold">Location & BG</th>
+                    <th className="py-4 px-6 font-bold">{leaderboardType === 'donors' ? 'Donor' : 'Blood Bank'}</th>
+                    <th className="py-4 px-6 font-bold">{leaderboardType === 'donors' ? 'Location & BG' : 'Location'}</th>
                     <th className="py-4 px-6 font-bold text-center">Donations</th>
                     <th className="py-4 px-6 font-bold text-right">Points</th>
                   </tr>
@@ -262,8 +303,10 @@ const Leaderboard: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-4 px-6">
-                        <div className="text-sm text-text-primary">{donor.city || 'Unknown'}</div>
-                        <div className="text-xs font-bold text-primary mt-0.5">{donor.bloodGroup || donor.bg}</div>
+                        <div className="text-sm text-text-primary truncate max-w-[150px]">{donor.city || donor.address || 'Unknown'}</div>
+                        {leaderboardType === 'donors' && (
+                          <div className="text-xs font-bold text-primary mt-0.5">{donor.bloodGroup || donor.bg}</div>
+                        )}
                       </td>
                       <td className="py-4 px-6 text-center font-bold text-text-primary">
                         {donor.donations}
@@ -310,20 +353,28 @@ const Leaderboard: React.FC = () => {
               <Tent className="w-5 h-5 text-primary mr-2" /> Upcoming Camps
             </h3>
             <div className="space-y-4">
-              {UPCOMING_CAMPS.map((camp, idx) => (
-                <div key={idx} className="flex items-start group cursor-pointer">
-                  <div className="bg-primary text-white rounded-lg p-2 text-center min-w-[50px] mr-3 group-hover:bg-primary-dark transition-colors">
-                    <div className="text-[10px] font-bold uppercase">{camp.date.split(' ')[0]}</div>
-                    <div className="text-lg font-bold leading-none mt-1">{camp.date.split(' ')[1]}</div>
+              {camps.slice(0, 3).map((camp) => {
+                const dateObj = new Date(camp.date);
+                const monthStr = dateObj.toLocaleDateString('en-US', { month: 'short' });
+                const dayStr = dateObj.toLocaleDateString('en-US', { day: '2-digit' });
+                return (
+                  <div key={camp.id} className="flex items-start group cursor-pointer">
+                    <div className="bg-primary text-white rounded-lg p-2 text-center min-w-[50px] mr-3 group-hover:bg-primary-dark transition-colors">
+                      <div className="text-[10px] font-bold uppercase">{monthStr}</div>
+                      <div className="text-lg font-bold leading-none mt-1">{dayStr}</div>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-text-primary text-sm group-hover:text-primary transition-colors">{camp.title}</h4>
+                      <p className="text-xs text-text-secondary mt-1 flex items-center">
+                        <MapPin className="w-3 h-3 mr-1" /> {camp.location}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-bold text-text-primary text-sm group-hover:text-primary transition-colors">{camp.title}</h4>
-                    <p className="text-xs text-text-secondary mt-1 flex items-center">
-                      <MapPin className="w-3 h-3 mr-1" /> {camp.loc}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
+              {camps.length === 0 && (
+                <div className="text-sm text-text-secondary text-center py-4">No upcoming camps found.</div>
+              )}
             </div>
             <Link to="/community?tab=Camps" className="block w-full mt-6 py-2.5 border border-border rounded-lg text-sm font-bold text-text-primary hover:bg-gray-50 transition-colors text-center">
               Find more camps
@@ -333,8 +384,7 @@ const Leaderboard: React.FC = () => {
         </div>
       </div>
       
-      <Footer />
-    </div>
+          </div>
   );
 };
 

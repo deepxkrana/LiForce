@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useInView } from 'framer-motion';
-import { useRef } from 'react';
+import { API_URL } from '../lib/api';
 
 interface StatCounterProps {
   endValue: number;
@@ -50,14 +50,36 @@ const StatCounter: React.FC<StatCounterProps> = ({ endValue, label, suffix = '',
 };
 
 const ImpactStatsBar: React.FC = () => {
+  const [stats, setStats] = useState({
+    donors: 0,
+    bloodbanks: 0,
+    donations: 0,
+    avgResponseTime: 30
+  });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await fetch(`${API_URL}/stats`);
+        if (response.ok) {
+          const data = await response.json();
+          setStats(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch stats", err);
+      }
+    };
+    fetchStats();
+  }, []);
+
   return (
     <section className="py-12 bg-background border-y border-[#F5B7B1]/30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
-          <StatCounter endValue={48200} suffix="+" label="Registered donors" />
-          <StatCounter endValue={1340} suffix="+" label="Partner blood banks" />
-          <StatCounter endValue={92500} suffix="+" label="Donations completed" />
-          <StatCounter endValue={12} suffix=" min" label="Avg. response time" />
+          <StatCounter endValue={stats.donors} label="Registered donors" />
+          <StatCounter endValue={stats.bloodbanks} label="Partner blood banks" />
+          <StatCounter endValue={stats.donations} label="Donations completed" />
+          <StatCounter endValue={stats.avgResponseTime} suffix=" min" label="Avg. response time" />
         </div>
       </div>
     </section>

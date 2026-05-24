@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
 import { API_URL } from '../lib/api';
 import { useToast } from '../components/ToastProvider';
 import { 
@@ -154,12 +152,10 @@ const DonateBlood: React.FC = () => {
   if (isPageLoading) {
     return (
       <div className="min-h-screen bg-background flex flex-col pt-20">
-        <Navbar />
-        <div className="flex-grow flex items-center justify-center">
+                <div className="flex-grow flex items-center justify-center">
           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
         </div>
-        <Footer />
-      </div>
+              </div>
     );
   }
 
@@ -183,8 +179,7 @@ const DonateBlood: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col pt-20">
-      <Navbar />
-      
+            
       <div className="flex-grow max-w-4xl w-full mx-auto px-4 py-12">
         <button 
           onClick={() => navigate(-1)}
@@ -412,8 +407,7 @@ const DonateBlood: React.FC = () => {
         </div>
       </div>
 
-      <Footer />
-    </div>
+          </div>
   );
 };
 

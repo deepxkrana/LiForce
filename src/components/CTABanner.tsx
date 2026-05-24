@@ -1,11 +1,25 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
+import { API_URL } from '../lib/api';
 
 const CTABanner: React.FC = () => {
   const token = localStorage.getItem('liforce_token');
   const role = localStorage.getItem('liforce_role');
   const isAuthenticated = !!token;
+
+  const [stats, setStats] = useState({ donors: 48000, bloodbanks: 1200 });
+
+  useEffect(() => {
+    fetch(`${API_URL}/stats`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.donors && data.bloodbanks) {
+          setStats({ donors: data.donors, bloodbanks: data.bloodbanks });
+        }
+      })
+      .catch(err => console.error("Failed to fetch stats for CTA:", err));
+  }, []);
 
   return (
     <section className="py-24 bg-primary relative overflow-hidden">
@@ -30,7 +44,7 @@ const CTABanner: React.FC = () => {
           transition={{ delay: 0.1 }}
           className="text-xl text-primary-light mb-10 max-w-2xl mx-auto opacity-90"
         >
-          Join 48,000+ donors making a difference across India
+          Join {stats.donors.toLocaleString()}+ donors and {stats.bloodbanks.toLocaleString()}+ banks making a difference across India
         </motion.p>
         
         <motion.div 
