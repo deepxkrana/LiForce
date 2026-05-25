@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
-  LayoutDashboard, Droplet, CalendarClock, Bell, Trophy, Activity, MessageSquare, Settings,
+  LayoutDashboard, Droplet, CalendarClock, Bell, Trophy, Activity, MessageSquare, Settings as SettingsIcon,
   Flame, Calendar, MapPin, CheckCircle, AlertTriangle, Bot, Phone, Heart, X, Check, User, Users, Plus, Minus
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -94,7 +94,7 @@ const DonorDashboard: React.FC = () => {
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editPhone, setEditPhone] = useState('');
-  const [editCity, setEditCity] = useState('');
+  const [editAddress, setEditAddress] = useState('');
   const [editMaxDistance, setEditMaxDistance] = useState(50);
   const [editNotifications, setEditNotifications] = useState(true);
   const [editCoordinates, setEditCoordinates] = useState<[number, number] | null>(null);
@@ -119,7 +119,7 @@ const DonorDashboard: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('liforce_token');
+      const token = localStorage.getItem('liforce_userId');
       if (!token) return;
 
       const response = await fetch(`${API_URL}/emergencies/${requestId}/respond`, {
@@ -165,19 +165,10 @@ const DonorDashboard: React.FC = () => {
   };
 
 
-  const startEditing = () => {
-    setEditPhone(donorData?.phone || '');
-    setEditCity(donorData?.city || '');
-    setEditMaxDistance(donorData?.maxTravelDistanceKm || 50);
-    setEditNotifications(donorData?.notificationsEnabled ?? true);
-    setEditCoordinates(donorData?.latitude && donorData?.longitude ? [donorData.latitude, donorData.longitude] : null);
-    setIsEditingProfile(true);
-  };
-
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('liforce_token');
+      const token = localStorage.getItem('liforce_userId');
       if (!token) return;
 
       const response = await fetch(`${API_URL}/donors/me`, {
@@ -188,7 +179,7 @@ const DonorDashboard: React.FC = () => {
         },
         body: JSON.stringify({
           phone: editPhone,
-          city: editCity,
+          address: editAddress,
           maxTravelDistanceKm: Number(editMaxDistance),
           notificationsEnabled: editNotifications,
           latitude: editCoordinates?.[0],
@@ -219,7 +210,7 @@ const DonorDashboard: React.FC = () => {
 
   const fetchActiveSOSRequest = async () => {
     try {
-      const token = localStorage.getItem('liforce_token');
+      const token = localStorage.getItem('liforce_userId');
       if (!token) return;
       
       const response = await fetch(`${API_URL}/emergencies/my-active`, {
@@ -238,7 +229,7 @@ const DonorDashboard: React.FC = () => {
 
   const handleFulfillSOS = async (id: string) => {
     try {
-      const token = localStorage.getItem('liforce_token');
+      const token = localStorage.getItem('liforce_userId');
       if (!token) return;
       
       const response = await fetch(`${API_URL}/emergencies/${id}/status`, {
@@ -264,7 +255,7 @@ const DonorDashboard: React.FC = () => {
 
   const handleCancelSOS = async (id: string) => {
     try {
-      const token = localStorage.getItem('liforce_token');
+      const token = localStorage.getItem('liforce_userId');
       if (!token) return;
       
       const response = await fetch(`${API_URL}/emergencies/${id}/status`, {
@@ -288,6 +279,22 @@ const DonorDashboard: React.FC = () => {
     }
   };
 
+  const handleDismissNotification = async (id: string) => {
+    try {
+      const token = localStorage.getItem('liforce_userId');
+      if (!token) return;
+      const res = await fetch(`${API_URL}/notifications/${id}/read`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setGeneralNotifications(prev => prev.filter(n => n.id !== id));
+      }
+    } catch (err) {
+      console.error("Failed to dismiss notification", err);
+    }
+  };
+
   const [hasAppointment, setHasAppointment] = useState(false);
   const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
   const [appointmentDate, setAppointmentDate] = useState('2026-10-24');
@@ -305,6 +312,7 @@ const DonorDashboard: React.FC = () => {
 
   const [donorData, setDonorData] = useState<any>(null);
   const [nearbyRequests, setNearbyRequests] = useState<any[]>([]);
+  const [generalNotifications, setGeneralNotifications] = useState<any[]>([]);
   const [bloodBanks, setBloodBanks] = useState<any[]>([]);
 
   useEffect(() => {
@@ -339,12 +347,12 @@ const DonorDashboard: React.FC = () => {
     { name: 'Rewards', id: 'rewards', icon: <Trophy /> },
     { name: 'Health tracker', id: 'health', icon: <Activity /> },
     { name: 'Messages', id: 'messages', icon: <MessageSquare /> },
-    { name: 'Settings', id: 'settings', icon: <Settings /> },
+    { name: 'Settings', id: 'settings', icon: <SettingsIcon /> },
   ];
 
   const fetchDonorProfile = async () => {
     try {
-      const token = localStorage.getItem('liforce_token');
+      const token = localStorage.getItem('liforce_userId');
       if (!token) return; // Not logged in
       
       const response = await fetch(`${API_URL}/donors/me`, {
@@ -371,6 +379,20 @@ const DonorDashboard: React.FC = () => {
         }
       } catch (err) {
         console.error("Failed to fetch nearby emergencies", err);
+      }
+
+      // Fetch general notifications
+      try {
+        const notifRes = await fetch(`${API_URL}/notifications`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (notifRes.ok) {
+          setGeneralNotifications(await notifRes.json());
+        }
+      } catch (err) {
+        console.error("Failed to fetch general notifications", err);
       }
 
       // Fetch blood banks
@@ -408,7 +430,9 @@ const DonorDashboard: React.FC = () => {
   const initials = name.substring(0, 2).toUpperCase();
   const bloodGroup = donorData?.bloodGroup || "-";
   const rewardPoints = donorData?.rewardPoints || 0;
-  const donationsCount = donorData?.donations?.filter((d: any) => d.status === 'Completed').length || 0;
+  const baseDonationsCount = donorData?.donations?.filter((d: any) => d.status === 'Completed').length || 0;
+  const campDonationsCount = donorData?.donatedCamps?.length || 0;
+  const donationsCount = baseDonationsCount + campDonationsCount;
   const lastDonatedAt = donorData?.lastDonatedAt;
 
   // Find the first pending appointment from real backend data
@@ -466,7 +490,7 @@ const DonorDashboard: React.FC = () => {
   const handleCancelAppointment = async () => {
     if (upcomingAppointment) {
       try {
-        const token = localStorage.getItem('liforce_token');
+        const token = localStorage.getItem('liforce_userId');
         if (!token) return;
         
         const response = await fetch(`${API_URL}/donations/${upcomingAppointment.id}/cancel`, {
@@ -495,7 +519,7 @@ const DonorDashboard: React.FC = () => {
   const handleRescheduleAppointment = async () => {
     if (upcomingAppointment) {
       try {
-        const token = localStorage.getItem('liforce_token');
+        const token = localStorage.getItem('liforce_userId');
         if (!token) return;
         
         const combinedDateTime = combineDateAndTimeSlot(rescheduleDate, rescheduleTime);
@@ -538,7 +562,7 @@ const DonorDashboard: React.FC = () => {
     }
     
     try {
-      const token = localStorage.getItem('liforce_token');
+      const token = localStorage.getItem('liforce_userId');
       if (!token) {
         showToast('Please login as a donor to book an appointment.', 'error');
         return;
@@ -614,9 +638,9 @@ const DonorDashboard: React.FC = () => {
   ];
 
   // Generate dynamic RECENT_ACTIVITY
-  const recentActivity: any[] = [];
+  let recentActivity: any[] = [];
   if (donorData?.donations) {
-    donorData.donations.slice(0, 5).forEach((d: any) => {
+    donorData.donations.forEach((d: any) => {
       const timeStr = new Date(d.scheduledDate).toLocaleDateString();
       let icon = <CalendarClock className="h-5 w-5 text-text-secondary" />;
       let title = 'Donation Scheduled';
@@ -630,10 +654,28 @@ const DonorDashboard: React.FC = () => {
         title,
         desc: d.bloodBank?.name || 'Blood Center',
         time: timeStr,
-        icon
+        icon,
+        timestamp: new Date(d.scheduledDate).getTime()
       });
     });
   }
+
+  if (donorData?.donatedCamps) {
+    donorData.donatedCamps.forEach((camp: any) => {
+      recentActivity.push({
+        id: `camp-${camp.id}`,
+        type: 'donation',
+        title: 'Donated at Camp',
+        desc: `${camp.title} by ${camp.organizerName || 'Blood Bank'}`,
+        time: new Date(camp.date).toLocaleDateString(),
+        icon: <CheckCircle className="h-5 w-5 text-accent" />,
+        timestamp: new Date(camp.date).getTime()
+      });
+    });
+  }
+
+  recentActivity.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  recentActivity = recentActivity.slice(0, 5);
   
   if (recentActivity.length === 0) {
     recentActivity.push({
@@ -793,6 +835,14 @@ const DonorDashboard: React.FC = () => {
           </button>
           <button
             type="button"
+            onClick={() => navigate('/settings')}
+            className="flex items-center bg-white border border-border text-text-primary p-2 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+            title="Settings"
+          >
+            <SettingsIcon className="h-5 w-5 text-text-secondary" />
+          </button>
+          <button
+            type="button"
             onClick={() => setIsSOSTrackerOpen(true)}
             className="flex items-center bg-[#FADBD8] text-critical px-4 py-2 rounded-lg font-bold hover:bg-[#F5B7B1] transition-colors relative overflow-hidden cursor-pointer"
           >
@@ -805,7 +855,7 @@ const DonorDashboard: React.FC = () => {
             aria-label="Notifications"
           >
             <Bell className="h-5 w-5" />
-            {nearbyRequests.length > 0 && (
+            {(nearbyRequests.length > 0 || generalNotifications.filter(n => !n.isRead).length > 0) && (
               <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
             )}
           </button>
@@ -1567,15 +1617,7 @@ const DonorDashboard: React.FC = () => {
                     {initials}
                   </div>
                 </div>
-                {!isEditingProfile && (
-                  <button
-                    type="button"
-                    onClick={startEditing}
-                    className="bg-white border border-border text-text-primary px-4 py-2 rounded-xl font-bold text-xs hover:bg-gray-50 transition-colors shadow-sm cursor-pointer"
-                  >
-                    Edit Profile
-                  </button>
-                )}
+
               </div>
 
               {!isEditingProfile ? (
@@ -1603,8 +1645,8 @@ const DonorDashboard: React.FC = () => {
                       <span className="font-bold text-text-primary">{donorData.phone || 'Not Provided'}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm py-1 border-b border-gray-100 last:border-0">
-                      <span className="font-semibold text-text-secondary">City</span>
-                      <span className="font-bold text-text-primary capitalize">{donorData.city || 'Not Provided'}</span>
+                      <span className="font-semibold text-text-secondary">Address</span>
+                      <span className="font-bold text-text-primary capitalize">{donorData.address || 'Not Provided'}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm py-1 border-b border-gray-100 last:border-0">
                       <span className="font-semibold text-text-secondary">Max Travel Distance</span>
@@ -1656,13 +1698,13 @@ const DonorDashboard: React.FC = () => {
                     </div>
 
                     <div>
-                      <label htmlFor="edit-city" className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">City</label>
+                      <label htmlFor="edit-address" className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">Address</label>
                       <input 
-                        type="text" 
-                        id="edit-city"
-                        value={editCity}
-                        onChange={(e) => setEditCity(e.target.value)}
-                        placeholder="e.g. Chandigarh"
+                        id="edit-address"
+                        type="text"
+                        value={editAddress}
+                        onChange={(e) => setEditAddress(e.target.value)}
+                        placeholder="e.g. 123 Main St, City"
                         className="w-full bg-background border border-border rounded-xl px-4 py-3 text-text-primary focus:outline-none focus:border-primary transition-colors text-sm"
                         required
                       />
@@ -1746,19 +1788,19 @@ const DonorDashboard: React.FC = () => {
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-surface rounded-2xl max-w-3xl w-full border border-border shadow-2xl p-6 relative overflow-hidden"
+            className="bg-surface rounded-2xl max-w-3xl w-full border border-border shadow-2xl p-6 relative overflow-hidden flex flex-col max-h-[90vh]"
           >
             {/* Red top border/accents */}
             <div className="absolute top-0 left-0 right-0 h-[4px] bg-primary"></div>
             <div className="absolute right-0 top-0 w-32 h-32 bg-primary-light opacity-20 rounded-full -mr-10 -mt-10 blur-xl"></div>
             
             {/* Header with Title and Vertically Aligned Close Button */}
-            <div className="flex items-center justify-between mb-6 mt-2 relative z-10">
+            <div className="flex items-center justify-between mb-6 mt-2 relative z-10 shrink-0">
               <div className="flex items-center gap-2">
                 <Bell className="w-5 h-5 text-primary" />
                 <h2 className="text-lg font-bold text-text-primary">Urgent Notifications</h2>
                 <span className="text-xs font-semibold px-2 py-0.5 bg-primary-light text-primary rounded-full">
-                  {nearbyRequests.length} Active
+                  {nearbyRequests.length + generalNotifications.filter(n => !n.isRead).length} Active
                 </span>
               </div>
               <button 
@@ -1771,9 +1813,10 @@ const DonorDashboard: React.FC = () => {
               </button>
             </div>
 
-            <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
-              {nearbyRequests.length > 0 ? (
-                nearbyRequests.map((req: any, i: number) => (
+            <div className="space-y-4 overflow-y-auto pr-2 flex-grow">
+              {nearbyRequests.length > 0 || generalNotifications.filter(n => !n.isRead).length > 0 ? (
+                <>
+                {nearbyRequests.map((req: any, i: number) => (
                   <motion.div 
                     key={i} 
                     initial={{ opacity: 0, y: 10 }}
@@ -1854,23 +1897,58 @@ const DonorDashboard: React.FC = () => {
                       </button>
                     )}
                   </motion.div>
-                ))
+                ))}
+
+                {/* General Notifications */}
+                {generalNotifications.filter(n => !n.isRead).map((n: any, i: number) => (
+                  <motion.div 
+                    key={`gen-${n.id}`} 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="p-4 bg-gray-50 rounded-xl border border-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex-grow w-full sm:w-auto pr-6">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 bg-blue-500 text-white rounded text-[10px] font-extrabold tracking-wider uppercase">Info</span>
+                        <span className="text-xs font-medium text-text-secondary">{new Date(n.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      <p className="font-bold text-sm text-text-primary mt-2.5">
+                        {n.title}
+                      </p>
+                      <div className="mt-2 text-xs text-text-secondary">
+                        {n.message}
+                      </div>
+                    </div>
+                    
+                    <button 
+                      type="button"
+                      onClick={() => handleDismissNotification(n.id)}
+                      className="p-2 bg-white text-text-secondary border border-border hover:bg-red-50 hover:text-critical rounded-lg shadow-sm transition-colors shrink-0"
+                      title="Dismiss"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </motion.div>
+                ))}
+                </>
               ) : (
-                <div className="flex flex-col items-center justify-center py-10 text-center">
-                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
-                    <CheckCircle className="w-6 h-6 text-emerald-500" />
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="w-16 h-16 bg-[#E8F5F1] rounded-full flex items-center justify-center mb-4 border border-[#A3E4D7]">
+                    <CheckCircle className="w-8 h-8 text-accent" />
                   </div>
-                  <p className="font-semibold text-sm text-text-primary">You're all caught up!</p>
-                  <p className="text-xs text-text-secondary mt-1 px-4">There are currently no active emergency blood requests matching your details nearby.</p>
+                  <h3 className="text-lg font-bold text-text-primary">You're all caught up!</h3>
+                  <p className="text-sm text-text-secondary mt-1">There are currently no active notifications for you.</p>
                 </div>
               )}
             </div>
-
-            <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border">
-              <button 
-                type="button" 
+            
+            {/* Modal Footer aligned bottom */}
+            <div className="mt-6 pt-4 border-t border-border flex justify-end shrink-0">
+              <button
+                type="button"
                 onClick={() => setIsNotificationsModalOpen(false)}
-                className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-text-secondary rounded-xl font-bold transition-colors cursor-pointer text-sm"
+                className="px-6 py-2.5 bg-gray-100 text-text-secondary font-bold rounded-lg hover:bg-gray-200 transition-colors shadow-sm"
               >
                 Close
               </button>

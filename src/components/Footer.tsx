@@ -13,7 +13,7 @@ const FOOTER_LINKS = {
 
 const Footer: React.FC = () => {
   const userRole = localStorage.getItem('liforce_role');
-  const isLoggedIn = !!localStorage.getItem('liforce_token');
+  const isLoggedIn = !!localStorage.getItem('liforce_userId');
 
   const donorsLinks = [
     { name: 'Register as donor', path: '/register', hideIfLogged: true },

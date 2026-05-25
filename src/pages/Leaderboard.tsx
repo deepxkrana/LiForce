@@ -63,8 +63,8 @@ const Leaderboard: React.FC = () => {
     let list = leaderboardType === 'donors' ? [...donorData] : [...bankData];
     
     if (activeTab === 'By city') {
-      list = list.filter((d) => d.city || d.address);
-      list.sort((a, b) => ((a.city || a.address) || '').localeCompare((b.city || b.address) || ''));
+      list = list.filter((d) => d.address);
+      list.sort((a, b) => (a.address || '').localeCompare(b.address || ''));
     }
     if (activeTab === 'By blood group' && bloodGroupFilter && leaderboardType === 'donors') {
       list = list.filter((d) => d.bloodGroup === bloodGroupFilter);
@@ -231,7 +231,7 @@ const Leaderboard: React.FC = () => {
                 
                 <h3 className="font-bold text-lg text-text-primary">{donor.name}</h3>
                 <div className="flex items-center text-xs text-text-secondary mt-1 mb-3">
-                  <MapPin className="w-3 h-3 mr-1 shrink-0" /> <span className="truncate max-w-[150px]">{donor.city || donor.address || 'Unknown'}</span>
+                  <MapPin className="w-3 h-3 mr-1 shrink-0" /> <span className="truncate max-w-[150px]">{donor.address || 'Unknown'}</span>
                   {leaderboardType === 'donors' && (
                     <>
                       <span className="mx-2">•</span>
@@ -303,7 +303,7 @@ const Leaderboard: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-4 px-6">
-                        <div className="text-sm text-text-primary truncate max-w-[150px]">{donor.city || donor.address || 'Unknown'}</div>
+                        <div className="text-sm text-text-primary truncate max-w-[150px]">{donor.address || 'Unknown'}</div>
                         {leaderboardType === 'donors' && (
                           <div className="text-xs font-bold text-primary mt-0.5">{donor.bloodGroup || donor.bg}</div>
                         )}

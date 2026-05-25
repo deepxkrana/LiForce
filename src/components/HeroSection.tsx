@@ -164,7 +164,7 @@ const HeroSection: React.FC = () => {
 
   useEffect(() => {
     const fetchUserLocation = async () => {
-      const token = localStorage.getItem('liforce_token');
+      const token = localStorage.getItem('liforce_userId');
       const role = localStorage.getItem('liforce_role');
       
       if (token && role) {

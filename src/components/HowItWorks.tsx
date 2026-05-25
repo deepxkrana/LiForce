@@ -6,7 +6,7 @@ const HowItWorks: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('liforce_token');
+    const token = localStorage.getItem('liforce_userId');
     if (token) {
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));

@@ -87,7 +87,7 @@ const UrgentSOSBanner: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const token = localStorage.getItem('liforce_token');
+  const token = localStorage.getItem('liforce_userId');
   const role = localStorage.getItem('liforce_role');
 
   // Load nearby emergencies if user is logged in

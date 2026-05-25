@@ -21,6 +21,8 @@ const OrganiseCamp: React.FC = () => {
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
   const [capacity, setCapacity] = useState('50');
+  const [maxDonorVolunteers, setMaxDonorVolunteers] = useState('10');
+  const [maxBloodBankVolunteers, setMaxBloodBankVolunteers] = useState('5');
   const [isLoading, setIsLoading] = useState(false);
   const [isPageLoading, setIsPageLoading] = useState(true);
   
@@ -28,7 +30,7 @@ const OrganiseCamp: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem('liforce_token');
+    const token = localStorage.getItem('liforce_userId');
     const role = localStorage.getItem('liforce_role');
 
     // Protect Route
@@ -57,7 +59,7 @@ const OrganiseCamp: React.FC = () => {
     }
 
     setIsLoading(true);
-    const token = localStorage.getItem('liforce_token');
+    const token = localStorage.getItem('liforce_userId');
     const combinedDateTime = new Date(`${campDate}T${campTime}`);
 
     try {
@@ -72,7 +74,9 @@ const OrganiseCamp: React.FC = () => {
           date: combinedDateTime.toISOString(),
           location,
           description: description.trim() || undefined,
-          capacity
+          capacity,
+          maxDonorVolunteers,
+          maxBloodBankVolunteers
         })
       });
 
@@ -192,19 +196,49 @@ const OrganiseCamp: React.FC = () => {
                 </div>
 
                 {/* Capacity */}
-                <div>
-                  <label className="block text-sm font-extrabold text-text-primary mb-2.5 flex items-center gap-1.5">
-                    <User className="w-4 h-4 text-accent" /> Total Attendee Capacity
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={capacity}
-                    onChange={(e) => setCapacity(e.target.value)}
-                    required
-                    placeholder="e.g. 50"
-                    className="w-full px-4 py-3.5 rounded-xl border border-border bg-background outline-none transition-all focus:border-accent text-text-primary"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                  <div>
+                    <label className="block text-sm font-extrabold text-text-primary mb-2.5 flex items-center gap-1.5">
+                      <User className="w-4 h-4 text-accent" /> Total Capacity
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={capacity}
+                      onChange={(e) => setCapacity(e.target.value)}
+                      required
+                      placeholder="e.g. 50"
+                      className="w-full px-4 py-3.5 rounded-xl border border-border bg-background outline-none transition-all focus:border-accent text-text-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-extrabold text-text-primary mb-2.5 flex items-center gap-1.5" title="Maximum number of donor volunteers">
+                      <User className="w-4 h-4 text-accent" /> Donor Vol. Max
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={maxDonorVolunteers}
+                      onChange={(e) => setMaxDonorVolunteers(e.target.value)}
+                      required
+                      placeholder="e.g. 10"
+                      className="w-full px-4 py-3.5 rounded-xl border border-border bg-background outline-none transition-all focus:border-accent text-text-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-extrabold text-text-primary mb-2.5 flex items-center gap-1.5" title="Maximum number of blood bank volunteers">
+                      <User className="w-4 h-4 text-accent" /> Bank Vol. Max
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={maxBloodBankVolunteers}
+                      onChange={(e) => setMaxBloodBankVolunteers(e.target.value)}
+                      required
+                      placeholder="e.g. 5"
+                      className="w-full px-4 py-3.5 rounded-xl border border-border bg-background outline-none transition-all focus:border-accent text-text-primary"
+                    />
+                  </div>
                 </div>
 
                 {/* Description */}

@@ -88,7 +88,7 @@ const EmergencyRequest: React.FC = () => {
       }
       setIsSearching(true);
       try {
-        const token = localStorage.getItem('liforce_token');
+        const token = localStorage.getItem('liforce_userId');
         const headers: any = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -130,7 +130,7 @@ const EmergencyRequest: React.FC = () => {
 
   const onSubmit = async (data: FormData) => {
     try {
-      const token = localStorage.getItem('liforce_token');
+      const token = localStorage.getItem('liforce_userId');
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };

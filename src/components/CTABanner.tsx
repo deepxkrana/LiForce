@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { API_URL } from '../lib/api';
 
 const CTABanner: React.FC = () => {
-  const token = localStorage.getItem('liforce_token');
+  const token = localStorage.getItem('liforce_userId');
   const role = localStorage.getItem('liforce_role');
   const isAuthenticated = !!token;
 

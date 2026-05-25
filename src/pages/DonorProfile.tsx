@@ -1,5 +1,5 @@
 import React from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { MapPin, Calendar, ShieldCheck, MessageSquare, AlertCircle, Droplet, Clock, Flame, Trophy } from 'lucide-react';
 import { API_URL } from '../lib/api';
@@ -11,7 +11,7 @@ const DonorProfile: React.FC = () => {
   const { openChat } = useChat();
   const [donorData, setDonorData] = React.useState<any>(null);
 
-  const token = localStorage.getItem('liforce_token');
+  const token = localStorage.getItem('liforce_userId');
   const loggedInUserId = React.useMemo(() => {
     if (!token) return null;
     try {
@@ -40,7 +40,7 @@ const DonorProfile: React.FC = () => {
         const endpoint = fetchMe ? `${API_URL}/donors/me` : `${API_URL}/donors/${id}`;
         const headers: Record<string, string> = {};
         if (fetchMe) {
-          headers['Authorization'] = `Bearer ${localStorage.getItem('liforce_token') || ''}`;
+          headers['Authorization'] = `Bearer ${localStorage.getItem('liforce_userId') || ''}`;
         }
         const response = await fetch(endpoint, { headers });
         if (response.ok) {
@@ -61,7 +61,9 @@ const DonorProfile: React.FC = () => {
     );
   }
 
-  const donationsCount = donorData?._count?.donations || donorData?.donations?.filter((d: any) => d.status === 'Completed').length || 0;
+  const baseDonationsCount = donorData?._count?.donations || donorData?.donations?.filter((d: any) => d.status === 'Completed').length || 0;
+  const campDonationsCount = donorData?.donatedCamps?.length || 0;
+  const donationsCount = baseDonationsCount + campDonationsCount;
   const lastDonatedAt = donorData?.lastDonatedAt;
   
   let daysUntilEligible = 0;
@@ -93,14 +95,27 @@ const DonorProfile: React.FC = () => {
     { id: 6, name: 'Hero', earned: rewardPoints >= 5000, icon: '🦸', date: rewardPoints >= 5000 ? 'Earned' : 'Locked' },
   ];
 
-  const recentActivity: any[] = [];
+  let recentActivity: any[] = [];
   if (donorData?.donations && donorData.donations.length > 0) {
-    donorData.donations.slice(0, 5).forEach((d: any, idx: number) => {
+    donorData.donations.forEach((d: any, idx: number) => {
       recentActivity.push({
         id: `don-${d.id || idx}`,
         action: d.status === 'Completed' ? 'Donated Blood' : 'Scheduled Donation',
         location: d.bloodBank?.name || 'Blood Center',
         date: new Date(d.scheduledDate).toLocaleDateString(),
+        timestamp: new Date(d.scheduledDate).getTime()
+      });
+    });
+  }
+
+  if (donorData?.donatedCamps) {
+    donorData.donatedCamps.forEach((camp: any) => {
+      recentActivity.push({
+        id: `camp-${camp.id}`,
+        action: 'Donated Blood at Camp',
+        location: `${camp.title} by ${camp.organizerName || 'Blood Bank'}`,
+        date: new Date(camp.date).toLocaleDateString(),
+        timestamp: new Date(camp.date).getTime()
       });
     });
   }
@@ -110,17 +125,21 @@ const DonorProfile: React.FC = () => {
     recentActivity.push({
       id: 'join',
       action: 'Joined LiForce',
-      location: donorData.city || 'App',
+      location: donorData.address || 'App',
       date: new Date(donorData.createdAt).toLocaleDateString(),
+      timestamp: new Date(donorData.createdAt).getTime()
     });
   }
+
+  recentActivity.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  recentActivity = recentActivity.slice(0, 5);
 
   const progressPercentage = eligibilityPercent;
 
   const donor = {
     name: donorData.name,
     bloodGroup: donorData.bloodGroup,
-    city: donorData.city || 'Unknown',
+    address: donorData.address || 'Unknown',
     age: donorData.age || 28,
     gender: donorData.gender || 'Unknown',
     isVerified: true,
@@ -202,7 +221,7 @@ const DonorProfile: React.FC = () => {
                 </span>
               </div>
               <div className="flex flex-col md:flex-row items-center gap-2 md:gap-6 text-text-secondary text-sm">
-                <span className="flex items-center"><MapPin className="w-4 h-4 mr-1" /> {donor.city}</span>
+                <span className="flex items-center"><MapPin className="w-4 h-4 mr-1" /> {donor.address}</span>
                 <span className="hidden md:inline">•</span>
                 <span className="flex items-center"><Calendar className="w-4 h-4 mr-1" /> {donor.age} years old</span>
                 {donor.gender && donor.gender !== 'Unknown' && (

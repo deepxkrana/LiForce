@@ -68,7 +68,7 @@ const DonateBlood: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem('liforce_token');
+    const token = localStorage.getItem('liforce_userId');
     const role = localStorage.getItem('liforce_role');
 
     // Protect Route
@@ -118,7 +118,7 @@ const DonateBlood: React.FC = () => {
     }
 
     setIsLoading(true);
-    const token = localStorage.getItem('liforce_token');
+    const token = localStorage.getItem('liforce_userId');
     const combinedDateTime = new Date(`${scheduledDate}T${scheduledTime}`);
 
     try {

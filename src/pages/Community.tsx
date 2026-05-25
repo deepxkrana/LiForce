@@ -61,17 +61,9 @@ const Community: React.FC = () => {
   }, [donorLastDonatedAt]);
 
   const userRole = localStorage.getItem('liforce_role');
-  const isLoggedIn = !!localStorage.getItem('liforce_token');
+  const isLoggedIn = !!localStorage.getItem('liforce_userId');
 
-  const currentUserId = (() => {
-    const token = localStorage.getItem('liforce_token');
-    if (!token) return null;
-    try {
-      return JSON.parse(atob(token.split('.')[1]))?.id || null;
-    } catch {
-      return null;
-    }
-  })();
+  const currentUserId = localStorage.getItem('liforce_userId');
 
   useEffect(() => {
     const fetchCommunityData = async () => {
@@ -79,12 +71,18 @@ const Community: React.FC = () => {
         const postsRes = await fetch(`${API_URL}/community/posts`);
         if (postsRes.ok) setPosts(await postsRes.json());
 
-        const campsRes = await fetch(`${API_URL}/community/camps`);
-        if (campsRes.ok) setCamps(await campsRes.json());
+        let campsData = [];
+        if (isLoggedIn) {
+          const campsRes = await fetch(`${API_URL}/community/camps`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('liforce_userId')}` }
+          });
+          if (campsRes.ok) campsData = await campsRes.json();
+        }
+        setCamps(campsData);
 
         if (isLoggedIn) {
           const rsvpsRes = await fetch(`${API_URL}/camps/my-rsvps`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('liforce_token')}` }
+            headers: { Authorization: `Bearer ${localStorage.getItem('liforce_userId')}` }
           });
           if (rsvpsRes.ok) {
             const data = await rsvpsRes.json();
@@ -117,7 +115,7 @@ const Community: React.FC = () => {
       setIsCheckingEligibility(true);
       try {
         const res = await fetch(`${API_URL}/donors/me`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('liforce_token')}` }
+          headers: { Authorization: `Bearer ${localStorage.getItem('liforce_userId')}` }
         });
         if (res.ok) {
           const data = await res.json();
@@ -130,7 +128,7 @@ const Community: React.FC = () => {
 
   const handleConfirmJoin = async (role: 'donor' | 'volunteer') => {
     if (!selectedCampId) return;
-    const token = localStorage.getItem('liforce_token');
+    const token = localStorage.getItem('liforce_userId');
     try {
       const res = await fetch(`${API_URL}/camps/${selectedCampId}/rsvp`, {
         method: 'POST',
@@ -155,7 +153,7 @@ const Community: React.FC = () => {
   };
 
   const handleCancelRsvp = async (campId: string) => {
-    const token = localStorage.getItem('liforce_token');
+    const token = localStorage.getItem('liforce_userId');
     try {
       const res = await fetch(`${API_URL}/camps/${campId}/rsvp`, {
         method: 'DELETE',
@@ -203,7 +201,7 @@ const Community: React.FC = () => {
     }
 
     setIsSubmitting(true);
-    const token = localStorage.getItem('liforce_token');
+    const token = localStorage.getItem('liforce_userId');
     try {
       const res = await fetch(`${API_URL}/community/posts`, {
         method: 'POST',
@@ -555,11 +553,17 @@ const Community: React.FC = () => {
                     </div>
                   </div>
                 ))}
-                {camps.length === 0 && (
-                  <div className="col-span-full p-10 text-center text-text-secondary bg-surface rounded-xl border border-dashed border-border">
-                    No upcoming camps found. Check back later!
+                {!isLoggedIn ? (
+                  <div className="col-span-full p-10 text-center text-text-secondary bg-surface rounded-xl border border-dashed border-border flex flex-col items-center">
+                    <Tent className="w-12 h-12 text-gray-300 mb-3" />
+                    <p className="text-lg font-medium mb-4">Register to Join camps</p>
+                    <Link to="/donor-registration" className="font-bold bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary-dark transition-colors">Create an Account</Link>
                   </div>
-                )}
+                ) : camps.length === 0 ? (
+                  <div className="col-span-full p-10 text-center text-text-secondary bg-surface rounded-xl border border-dashed border-border">
+                    No upcoming camps found in your area. Check back later!
+                  </div>
+                ) : null}
               </div>
             </motion.div>
           )}

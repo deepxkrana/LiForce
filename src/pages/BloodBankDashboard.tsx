@@ -2,15 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  LayoutDashboard, Database, Users, GitPullRequest, Tent, BarChart2, Radio, Settings,
+  LayoutDashboard, Database, Users, GitPullRequest, BarChart2, Radio, Settings,
   Droplets, AlertOctagon, Clock, Activity, ShieldCheck, AlertTriangle, Plus, User,
-  CheckCircle, XCircle, Check, CheckCheck, X, Minus, Edit
+  CheckCircle, Check, CheckCheck, X, Minus, Settings as SettingsIcon, XCircle, Bell
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import DashboardLayout from '../layouts/DashboardLayout';
 import SectionPlaceholder from '../components/dashboard/SectionPlaceholder';
 import { useToast } from '../components/ToastProvider';
-import { API_URL } from '../lib/api';
+import { API_URL, fetchWithAuth } from '../lib/api';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -48,7 +48,6 @@ const BloodBankDashboard: React.FC = () => {
     { name: 'Inventory', id: 'inventory', icon: <Database /> },
     { name: 'Donors', id: 'donors', icon: <Users /> },
     { name: 'Requests', id: 'requests', icon: <GitPullRequest /> },
-    { name: 'Camps', id: 'camps', icon: <Tent /> },
     { name: 'Analytics', id: 'analytics', icon: <BarChart2 /> },
     { name: 'Broadcast', id: 'broadcast', icon: <Radio /> },
     { name: 'Settings', id: 'settings', icon: <Settings /> },
@@ -63,20 +62,32 @@ const BloodBankDashboard: React.FC = () => {
     }
   };
 
+  const [generalNotifications, setGeneralNotifications] = useState<any[]>([]);
+  const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
+
+  const handleDismissNotification = async (id: string) => {
+    try {
+      const token = localStorage.getItem('liforce_userId');
+      if (!token) return;
+      const res = await fetch(`${API_URL}/notifications/${id}/read`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setGeneralNotifications(prev => prev.filter(n => n.id !== id));
+      }
+    } catch (err) {
+      console.error("Failed to dismiss notification", err);
+    }
+  };
+
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [restockModal, setRestockModal] = useState<{ open: boolean, bg: string | null }>({ open: false, bg: null });
   const [restockAmount, setRestockAmount] = useState<string>('');
 
   const [camps, setCamps] = useState<any[]>([]);
   const [campModalOpen, setCampModalOpen] = useState(false);
-  const [campFormData, setCampFormData] = useState({ name: '', location: '', date: '', time: '', description: '', capacity: '50' });
-
-  const [editCampModalOpen, setEditCampModalOpen] = useState(false);
-  const [editCampId, setEditCampId] = useState<string | null>(null);
-  const [editCampFormData, setEditCampFormData] = useState({ name: '', location: '', date: '', time: '', description: '', capacity: '50' });
-
-  const [abandonCampModalOpen, setAbandonCampModalOpen] = useState(false);
-  const [abandonCampData, setAbandonCampData] = useState({ id: '', name: '', reason: '' });
+  const [campFormData, setCampFormData] = useState({ name: '', location: '', date: '', time: '', description: '', capacity: '50', maxDonorVolunteers: '10', maxBloodBankVolunteers: '5' });
 
   const [editProfileModalOpen, setEditProfileModalOpen] = useState(false);
   const [editProfileData, setEditProfileData] = useState({
@@ -86,6 +97,8 @@ const BloodBankDashboard: React.FC = () => {
     longitude: 76.7794 as number
   });
 
+
+
   const handleCampSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!campFormData.name || !campFormData.location || !campFormData.date || !campFormData.time) return;
@@ -93,8 +106,8 @@ const BloodBankDashboard: React.FC = () => {
     const campDateTime = `${campFormData.date}T${campFormData.time}:00`;
     
     try {
-      const token = localStorage.getItem('liforce_token');
-      const response = await fetch(`${API_URL}/camps/create`, {
+      const token = localStorage.getItem('liforce_userId');
+      const response = await fetchWithAuth(`${API_URL}/camps/create`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -105,7 +118,9 @@ const BloodBankDashboard: React.FC = () => {
           location: campFormData.location,
           date: campDateTime,
           description: campFormData.description,
-          capacity: campFormData.capacity
+          capacity: campFormData.capacity,
+          maxDonorVolunteers: campFormData.maxDonorVolunteers,
+          maxBloodBankVolunteers: campFormData.maxBloodBankVolunteers
         })
       });
 
@@ -127,7 +142,7 @@ const BloodBankDashboard: React.FC = () => {
         
         showToast('Camp successfully scheduled!', 'success');
         setCampModalOpen(false);
-        setCampFormData({ name: '', location: '', date: '', time: '', description: '', capacity: '50' });
+        setCampFormData({ name: '', location: '', date: '', time: '', description: '', capacity: '50', maxDonorVolunteers: '10', maxBloodBankVolunteers: '5' });
       } else {
         const err = await response.json();
         showToast(err.error || 'Failed to schedule camp', 'error');
@@ -137,91 +152,7 @@ const BloodBankDashboard: React.FC = () => {
     }
   };
 
-  const handleCampEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editCampFormData.name || !editCampFormData.location || !editCampFormData.date || !editCampFormData.time || !editCampId) return;
-    
-    const campDateTime = `${editCampFormData.date}T${editCampFormData.time}:00`;
-    
-    try {
-      const token = localStorage.getItem('liforce_token');
-      const response = await fetch(`${API_URL}/camps/${editCampId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          title: editCampFormData.name,
-          location: editCampFormData.location,
-          date: campDateTime,
-          description: editCampFormData.description,
-          capacity: editCampFormData.capacity
-        })
-      });
 
-      if (response.ok) {
-        const updatedCamp = await response.json();
-        setCamps(prev => prev.map(c => {
-          if (c.id === editCampId) {
-            return {
-              ...c,
-              name: updatedCamp.camp?.title || editCampFormData.name,
-              location: updatedCamp.camp?.location || editCampFormData.location,
-              date: updatedCamp.camp?.date || campDateTime,
-              description: updatedCamp.camp?.description || editCampFormData.description,
-              capacity: updatedCamp.camp?.capacity || parseInt(editCampFormData.capacity) || 50
-            };
-          }
-          return c;
-        }));
-        
-        showToast('Camp details updated successfully!', 'success');
-        setEditCampModalOpen(false);
-        setEditCampId(null);
-        setEditCampFormData({ name: '', location: '', date: '', time: '', description: '', capacity: '50' });
-      } else {
-        const err = await response.json();
-        showToast(err.error || 'Failed to update camp', 'error');
-      }
-    } catch (err) {
-      showToast('Error updating camp', 'error');
-    }
-  };
-
-  const openAbandonModal = (id: string, name: string) => {
-    setAbandonCampData({ id, name, reason: '' });
-    setAbandonCampModalOpen(true);
-  };
-
-  const confirmCampAbandon = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!abandonCampData.id || !abandonCampData.reason) return;
-    
-    try {
-      const token = localStorage.getItem('liforce_token');
-      const response = await fetch(`${API_URL}/camps/${abandonCampData.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ reason: abandonCampData.reason })
-      });
-
-      if (response.ok) {
-        setCamps(prev => prev.filter(camp => camp.id !== abandonCampData.id));
-        showToast('Camp successfully cancelled.', 'success');
-        setAbandonCampModalOpen(false);
-        setAbandonCampData({ id: '', name: '', reason: '' });
-      } else {
-        const err = await response.json();
-        showToast(err.error || 'Failed to cancel camp', 'error');
-      }
-    } catch (err) {
-      showToast('Error cancelling camp', 'error');
-    }
-  };
 
   const handleRestockConfirm = async () => {
     if (!restockModal.bg || !restockAmount || isNaN(Number(restockAmount))) return;
@@ -230,13 +161,13 @@ const BloodBankDashboard: React.FC = () => {
     if (amountToAdd <= 0) return;
 
     try {
-      const token = localStorage.getItem('liforce_token');
+      const token = localStorage.getItem('liforce_userId');
       const existing = dashboardData?.bank?.inventory?.find((i: any) => i.bloodGroup === restockModal.bg);
       const currentUnits = existing ? existing.unitsAvailable : 0;
       const newTotal = currentUnits + amountToAdd;
       const newStatus = newTotal > 10 ? 'Good' : (newTotal > 5 ? 'Warning' : 'Critical');
 
-      const response = await fetch(`${API_URL}/bloodbanks/me/inventory`, {
+      const response = await fetchWithAuth(`${API_URL}/bloodbanks/me/inventory`, {
         method: 'PUT',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -291,7 +222,7 @@ const BloodBankDashboard: React.FC = () => {
 
   const handleDecreaseUnits = async (bg: string) => {
     try {
-      const token = localStorage.getItem('liforce_token');
+      const token = localStorage.getItem('liforce_userId');
       const existing = dashboardData?.bank?.inventory?.find((i: any) => i.bloodGroup === bg);
       const currentUnits = existing ? existing.unitsAvailable : 0;
       
@@ -303,7 +234,7 @@ const BloodBankDashboard: React.FC = () => {
       const newTotal = currentUnits - 1;
       const newStatus = newTotal < 5 ? 'Critical' : newTotal < 15 ? 'Low' : 'Good';
 
-      const response = await fetch(`${API_URL}/bloodbanks/me/inventory`, {
+      const response = await fetchWithAuth(`${API_URL}/bloodbanks/me/inventory`, {
         method: 'PUT',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -351,16 +282,27 @@ const BloodBankDashboard: React.FC = () => {
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
-        const token = localStorage.getItem('liforce_token');
+        const token = localStorage.getItem('liforce_userId');
         if (!token) return;
         
-        const response = await fetch(`${API_URL}/bloodbanks/me/dashboard`, {
+        const response = await fetchWithAuth(`${API_URL}/bloodbanks/me/dashboard`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
         if (response.ok) {
           const data = await response.json();
           setDashboardData(data);
+          
+          try {
+            const notifRes = await fetch(`${API_URL}/notifications`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (notifRes.ok) {
+              setGeneralNotifications(await notifRes.json());
+            }
+          } catch (err) {
+            console.error("Failed to fetch general notifications", err);
+          }
           
           if (data.bank?.latitude && data.bank?.longitude) {
             setProfileCoordinates([data.bank.latitude, data.bank.longitude]);
@@ -463,7 +405,7 @@ const BloodBankDashboard: React.FC = () => {
       const matchedRequest = pendingRequests.find((r: any) => r.id === id);
       if (matchedRequest) {
         const bankPhone = dashboardData?.bank?.phone || "1800-LIFORCE";
-        const response = await fetch(`${API_URL}/emergencies/${id}/respond`, {
+        const response = await fetchWithAuth(`${API_URL}/emergencies/${id}/respond`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -502,8 +444,8 @@ const BloodBankDashboard: React.FC = () => {
 
   const handleDonatedAction = async (id: string) => {
     try {
-      const token = localStorage.getItem('liforce_token');
-      const response = await fetch(`${API_URL}/emergencies/${id}/status`, {
+      const token = localStorage.getItem('liforce_userId');
+      const response = await fetchWithAuth(`${API_URL}/emergencies/${id}/status`, {
         method: 'PUT',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -560,10 +502,10 @@ const BloodBankDashboard: React.FC = () => {
 
   const handleDonationStatus = async (donationId: string, status: 'Accepted' | 'Completed' | 'Cancelled') => {
     try {
-      const token = localStorage.getItem('liforce_token');
+      const token = localStorage.getItem('liforce_userId');
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/donations/${donationId}/status`, {
+      const response = await fetchWithAuth(`${API_URL}/donations/${donationId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -575,7 +517,7 @@ const BloodBankDashboard: React.FC = () => {
       if (response.ok) {
         showToast(`Donation marked as ${status}!`, 'success');
         // Refresh dashboard data
-        const refreshResponse = await fetch(`${API_URL}/bloodbanks/me/dashboard`, {
+        const refreshResponse = await fetchWithAuth(`${API_URL}/bloodbanks/me/dashboard`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (refreshResponse.ok) {
@@ -595,8 +537,8 @@ const BloodBankDashboard: React.FC = () => {
   const handleEditProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('liforce_token');
-      const response = await fetch(`${API_URL}/bloodbanks/me`, {
+      const token = localStorage.getItem('liforce_userId');
+      const response = await fetchWithAuth(`${API_URL}/bloodbanks/me`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -633,8 +575,8 @@ const BloodBankDashboard: React.FC = () => {
     }
     setIsSavingProfile(true);
     try {
-      const token = localStorage.getItem('liforce_token');
-      const response = await fetch(`${API_URL}/bloodbanks/me`, {
+      const token = localStorage.getItem('liforce_userId');
+      const response = await fetchWithAuth(`${API_URL}/bloodbanks/me`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -766,61 +708,7 @@ const BloodBankDashboard: React.FC = () => {
           )}
         </SectionPlaceholder>
       )}
-      {activeSection === 'camps' && (
-        <div className="bg-surface p-6 rounded-2xl border border-border shadow-sm">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h2 className="text-xl font-bold text-text-primary">Manage Organized Camps</h2>
-              <p className="text-sm text-text-secondary">View, edit, and cancel your blood donation camps.</p>
-            </div>
-            <button type="button" onClick={() => setCampModalOpen(true)} className="px-4 py-2 bg-primary text-white rounded-lg font-bold text-sm">Add new camp</button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {camps.length === 0 ? (
-              <p className="text-text-secondary col-span-2 py-4 text-center border border-dashed border-border rounded-xl">No upcoming camps scheduled.</p>
-            ) : (
-              camps.map(camp => (
-                <div key={camp.id} className="border border-border rounded-xl p-4 flex flex-col justify-between">
-                  <div>
-                    <h3 className="font-bold text-lg mb-1">{camp.name}</h3>
-                    <p className="text-sm text-text-secondary mb-1">📍 {camp.location}</p>
-                    <p className="text-sm text-text-secondary mb-3">📅 {new Date(camp.date).toLocaleString('default', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
-                    <p className="text-sm font-bold text-accent mb-4">👥 {camp.rsvps} Attendees</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button 
-                      type="button" 
-                      onClick={() => {
-                        setEditCampId(camp.id);
-                        const d = new Date(camp.date);
-                        setEditCampFormData({
-                          name: camp.name,
-                          location: camp.location,
-                          date: d.toISOString().split('T')[0],
-                          time: d.toTimeString().split(' ')[0].slice(0, 5),
-                          description: camp.description || '',
-                          capacity: String(camp.capacity || 50)
-                        });
-                        setEditCampModalOpen(true);
-                      }} 
-                      className="flex-1 py-1.5 bg-gray-100 hover:bg-gray-200 text-text-primary text-sm font-bold rounded transition-colors"
-                    >
-                      Edit
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={() => openAbandonModal(camp.id, camp.name)} 
-                      className="flex-1 py-1.5 bg-[#FADBD8] hover:bg-red-200 text-critical text-sm font-bold rounded transition-colors"
-                    >
-                      Abandon
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+
       {activeSection === 'analytics' && (
         <SectionPlaceholder title="Analytics" description="30-day donation trends.">
           <div className="h-64">
@@ -898,18 +786,22 @@ const BloodBankDashboard: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => {
-              setEditProfileData({
-                email: dashboardData?.bank?.email || '',
-                phone: dashboardData?.bank?.phone || '',
-                latitude: dashboardData?.bank?.latitude || 30.7333,
-                longitude: dashboardData?.bank?.longitude || 76.7794
-              });
-              setEditProfileModalOpen(true);
-            }}
-            className="flex items-center bg-surface border border-border text-text-primary px-4 py-2.5 rounded-lg font-bold hover:bg-gray-50 transition-colors shadow-sm"
+            onClick={() => setIsNotificationsModalOpen(true)}
+            className="p-2.5 rounded-lg border border-border text-text-secondary bg-white hover:bg-gray-50 transition-colors relative shadow-sm"
+            aria-label="Notifications"
           >
-            <Edit className="h-4 w-4 mr-2" /> Edit profile
+            <Bell className="h-5 w-5" />
+            {generalNotifications.filter(n => !n.isRead).length > 0 && (
+              <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/settings')}
+            className="flex items-center bg-white border border-border text-text-primary p-2.5 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+            title="Settings"
+          >
+            <SettingsIcon className="h-5 w-5 text-text-secondary" />
           </button>
           <button
             type="button"
@@ -971,10 +863,10 @@ const BloodBankDashboard: React.FC = () => {
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 * index }}
               key={item.type} 
-              className={`relative flex flex-col p-4 rounded-xl border-2 ${getStatusColor(item.status)} shadow-sm`}
+              className={`relative flex flex-col p-4 rounded-xl border-2 ${getStatusColor(item.status)} shadow-sm min-h-[180px]`}
             >
               {item.status === 'Critical' && (
-                <div className="absolute inset-0 rounded-xl border-2 border-critical animate-ping opacity-20"></div>
+                <div className="absolute inset-0 rounded-xl border-2 border-critical animate-ping opacity-20 pointer-events-none"></div>
               )}
               <div className="flex justify-between items-start mb-2">
                 <span className="text-2xl font-bold">{item.type}</span>
@@ -990,17 +882,13 @@ const BloodBankDashboard: React.FC = () => {
               </button>
               <span className="text-3xl font-bold mt-1">{item.units} <span className="text-xs font-normal opacity-80">units</span></span>
               
-              <div className="mt-4 pt-3 border-t border-white/20">
-                {item.expiring > 0 && item.status !== 'Critical' && (
-                  <p className="text-[10px] font-medium opacity-90 flex items-center mb-2">
-                    <AlertTriangle className="w-3 h-3 mr-1" /> {item.expiring} exp. soon
-                  </p>
-                )}
-                {item.status === 'Critical' && (
-                  <p className="text-[10px] font-medium opacity-90 flex items-center mb-2">
-                    <AlertTriangle className="w-3 h-3 mr-1" /> Immediate shortage
-                  </p>
-                )}
+              <div className="mt-auto pt-3 border-t border-white/20">
+                <p className={`text-[10px] font-medium flex items-center mb-2 transition-opacity duration-300 ${
+                  (item.status === 'Critical' || item.expiring > 0) ? 'opacity-90' : 'opacity-0 select-none'
+                }`}>
+                  <AlertTriangle className="w-3 h-3 mr-1" /> 
+                  {item.status === 'Critical' ? 'Immediate shortage' : (item.expiring > 0 ? `${item.expiring} exp. soon` : 'Spacer text')}
+                </p>
                 <button
                   type="button"
                   onClick={() => setRestockModal({ open: true, bg: item.type })}
@@ -1243,7 +1131,7 @@ const BloodBankDashboard: React.FC = () => {
               })
             )}
           </div>
-          <button type="button" onClick={() => setActiveSection('camps')} className="w-full mt-auto py-2 border border-border rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+          <button type="button" onClick={() => navigate('/dashboard/bloodbank/camps')} className="w-full mt-auto py-2 border border-border rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
             View all camps
           </button>
         </motion.div>
@@ -1259,28 +1147,30 @@ const BloodBankDashboard: React.FC = () => {
             animate={{ opacity: 1, scale: 1 }}
             className="bg-surface rounded-2xl p-6 max-w-sm w-full shadow-xl"
           >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold">Restock {restockModal.bg}</h3>
-              <button type="button" onClick={() => setRestockModal({ open: false, bg: null })} className="text-gray-500 hover:text-gray-700">
-                <XCircle className="w-6 h-6" />
+            <form onSubmit={(e) => { e.preventDefault(); handleRestockConfirm(); }}>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold">Restock {restockModal.bg}</h3>
+                <button type="button" onClick={() => setRestockModal({ open: false, bg: null })} className="text-gray-500 hover:text-gray-700">
+                  <XCircle className="w-6 h-6" />
+                </button>
+              </div>
+              <p className="text-sm text-text-secondary mb-4">Enter the number of units you want to add to your inventory.</p>
+              <input
+                type="number"
+                min="1"
+                required
+                className="w-full border border-border rounded-lg px-4 py-2 mb-4 outline-none focus:border-primary"
+                placeholder="e.g. 5"
+                value={restockAmount}
+                onChange={(e) => setRestockAmount(e.target.value)}
+              />
+              <button
+                type="submit"
+                className="w-full bg-primary text-white py-2 rounded-lg font-bold hover:bg-primary-dark transition-colors"
+              >
+                Confirm Restock
               </button>
-            </div>
-            <p className="text-sm text-text-secondary mb-4">Enter the number of units you want to add to your inventory.</p>
-            <input
-              type="number"
-              min="1"
-              className="w-full border border-border rounded-lg px-4 py-2 mb-4 outline-none focus:border-primary"
-              placeholder="e.g. 5"
-              value={restockAmount}
-              onChange={(e) => setRestockAmount(e.target.value)}
-            />
-            <button
-              type="button"
-              onClick={handleRestockConfirm}
-              className="w-full bg-primary text-white py-2 rounded-lg font-bold hover:bg-primary-dark transition-colors"
-            >
-              Confirm Restock
-            </button>
+            </form>
           </motion.div>
         </div>
       )}
@@ -1376,144 +1266,9 @@ const BloodBankDashboard: React.FC = () => {
         </div>
       )}
 
-      {editCampModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-surface rounded-2xl p-6 max-w-md w-full shadow-xl"
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold">Edit Camp Details</h3>
-              <button type="button" onClick={() => { setEditCampModalOpen(false); setEditCampId(null); }} className="text-gray-500 hover:text-gray-700">
-                <XCircle className="w-6 h-6" />
-              </button>
-            </div>
-            <p className="text-sm text-text-secondary mb-6">Modify the details of your organized blood donation camp.</p>
-            
-            <form onSubmit={handleCampEditSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-text-primary mb-1">Camp Name</label>
-                <input
-                  type="text"
-                  required
-                  className="w-full border border-border rounded-lg px-4 py-2 outline-none focus:border-primary"
-                  value={editCampFormData.name}
-                  onChange={(e) => setEditCampFormData({...editCampFormData, name: e.target.value})}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-text-primary mb-1">Location</label>
-                <input
-                  type="text"
-                  required
-                  className="w-full border border-border rounded-lg px-4 py-2 outline-none focus:border-primary"
-                  value={editCampFormData.location}
-                  onChange={(e) => setEditCampFormData({...editCampFormData, location: e.target.value})}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold text-text-primary mb-1">Date</label>
-                  <input
-                    type="date"
-                    required
-                    className="w-full border border-border rounded-lg px-4 py-2 outline-none focus:border-primary"
-                    value={editCampFormData.date}
-                    onChange={(e) => setEditCampFormData({...editCampFormData, date: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-text-primary mb-1">Time</label>
-                  <input
-                    type="time"
-                    required
-                    className="w-full border border-border rounded-lg px-4 py-2 outline-none focus:border-primary"
-                    value={editCampFormData.time}
-                    onChange={(e) => setEditCampFormData({...editCampFormData, time: e.target.value})}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-text-primary mb-1">Total Capacity</label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  className="w-full border border-border rounded-lg px-4 py-2 outline-none focus:border-primary"
-                  value={editCampFormData.capacity}
-                  onChange={(e) => setEditCampFormData({...editCampFormData, capacity: e.target.value})}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-text-primary mb-1">Description</label>
-                <textarea
-                  className="w-full border border-border rounded-lg px-4 py-2 outline-none focus:border-primary min-h-[100px] resize-y"
-                  placeholder="Optional details about the camp..."
-                  value={editCampFormData.description}
-                  onChange={(e) => setEditCampFormData({...editCampFormData, description: e.target.value})}
-                ></textarea>
-              </div>
-              
-              <button
-                type="submit"
-                className="w-full bg-primary text-white py-2 mt-4 rounded-lg font-bold hover:bg-primary-dark transition-colors"
-              >
-                Save Changes
-              </button>
-            </form>
-          </motion.div>
-        </div>
-      )}
 
-      {abandonCampModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-surface rounded-2xl p-6 max-w-sm w-full shadow-xl"
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-critical">Abandon Camp</h3>
-              <button type="button" onClick={() => { setAbandonCampModalOpen(false); setAbandonCampData({ id: '', name: '', reason: '' }); }} className="text-gray-500 hover:text-gray-700">
-                <XCircle className="w-6 h-6" />
-              </button>
-            </div>
-            <p className="text-sm text-text-secondary mb-4">
-              Are you sure you want to abandon <strong>{abandonCampData.name}</strong>? This will notify all joined donors.
-            </p>
-            
-            <form onSubmit={confirmCampAbandon} className="space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-text-primary mb-1">Reason for Abandoning</label>
-                <textarea
-                  required
-                  className="w-full border border-border rounded-lg px-4 py-2 outline-none focus:border-critical min-h-[100px] resize-y"
-                  placeholder="E.g., Bad weather, shortage of staff, etc."
-                  value={abandonCampData.reason}
-                  onChange={(e) => setAbandonCampData({...abandonCampData, reason: e.target.value})}
-                ></textarea>
-              </div>
-              
-              <div className="flex gap-3 mt-4">
-                <button
-                  type="button"
-                  onClick={() => { setAbandonCampModalOpen(false); setAbandonCampData({ id: '', name: '', reason: '' }); }}
-                  className="flex-1 bg-gray-100 text-text-primary py-2 rounded-lg font-bold hover:bg-gray-200 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-critical text-white py-2 rounded-lg font-bold hover:bg-red-600 transition-colors"
-                >
-                  Abandon Camp
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
+
+
 
       {/* Edit Profile Modal */}
       <AnimatePresence>
@@ -1620,6 +1375,98 @@ const BloodBankDashboard: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Notifications Modal */}
+      {isNotificationsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-surface rounded-2xl max-w-3xl w-full border border-border shadow-2xl p-6 relative overflow-hidden flex flex-col max-h-[90vh]"
+          >
+            {/* Red top border/accents */}
+            <div className="absolute top-0 left-0 right-0 h-[4px] bg-primary"></div>
+            <div className="absolute right-0 top-0 w-32 h-32 bg-primary-light opacity-20 rounded-full -mr-10 -mt-10 blur-xl"></div>
+            
+            {/* Header with Title and Vertically Aligned Close Button */}
+            <div className="flex items-center justify-between mb-6 mt-2 relative z-10 shrink-0">
+              <div className="flex items-center gap-2">
+                <Bell className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-bold text-text-primary">Urgent Notifications</h2>
+                <span className="text-xs font-semibold px-2 py-0.5 bg-primary-light text-primary rounded-full">
+                  {generalNotifications.filter(n => !n.isRead).length} Active
+                </span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setIsNotificationsModalOpen(false)}
+                className="p-2 text-text-secondary hover:text-text-primary rounded-full hover:bg-gray-100 border border-border bg-white shadow-sm transition-colors cursor-pointer flex items-center justify-center"
+                aria-label="Close notifications"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto pr-2 flex-grow">
+              {generalNotifications.filter(n => !n.isRead).length > 0 ? (
+                <>
+                {/* General Notifications */}
+                {generalNotifications.filter(n => !n.isRead).map((n: any, i: number) => (
+                  <motion.div 
+                    key={`gen-${n.id}`} 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="p-4 bg-gray-50 rounded-xl border border-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex-grow w-full sm:w-auto pr-6">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 bg-blue-500 text-white rounded text-[10px] font-extrabold tracking-wider uppercase">Info</span>
+                        <span className="text-xs font-medium text-text-secondary">{new Date(n.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      <p className="font-bold text-sm text-text-primary mt-2.5">
+                        {n.title}
+                      </p>
+                      <div className="mt-2 text-xs text-text-secondary">
+                        {n.message}
+                      </div>
+                    </div>
+                    
+                    <button 
+                      type="button"
+                      onClick={() => handleDismissNotification(n.id)}
+                      className="p-2 bg-white text-text-secondary border border-border hover:bg-red-50 hover:text-critical rounded-lg shadow-sm transition-colors shrink-0"
+                      title="Dismiss"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </motion.div>
+                ))}
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="w-16 h-16 bg-[#E8F5F1] rounded-full flex items-center justify-center mb-4 border border-[#A3E4D7]">
+                    <CheckCircle className="w-8 h-8 text-accent" />
+                  </div>
+                  <h3 className="text-lg font-bold text-text-primary">You're all caught up!</h3>
+                  <p className="text-sm text-text-secondary mt-1">There are currently no active notifications for you.</p>
+                </div>
+              )}
+            </div>
+            
+            {/* Modal Footer aligned bottom */}
+            <div className="mt-6 pt-4 border-t border-border flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsNotificationsModalOpen(false)}
+                className="px-6 py-2.5 bg-gray-100 text-text-secondary font-bold rounded-lg hover:bg-gray-200 transition-colors shadow-sm"
+              >
+                Close
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
     </DashboardLayout>
   );

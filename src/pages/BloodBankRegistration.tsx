@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle, Mail, Hospital } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { API_URL } from '../lib/api';
+import { API_URL, fetchWithAuth } from '../lib/api';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -44,9 +44,9 @@ const BloodBankRegistration: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem('liforce_token');
+    const userId = localStorage.getItem('liforce_userId');
     const role = localStorage.getItem('liforce_role');
-    if (token && role) {
+    if (userId && role) {
       navigate(role === 'bloodbank' ? '/dashboard/bloodbank' : '/dashboard/donor', { replace: true });
     }
   }, [navigate]);
@@ -57,9 +57,8 @@ const BloodBankRegistration: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const res = await fetch(`${API_URL}/auth/register/initiate`, {
+      const res = await fetchWithAuth(`${API_URL}/auth/register/initiate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: formData.email, userType: 'bloodbank' })
       });
       const data = await res.json();
@@ -68,9 +67,7 @@ const BloodBankRegistration: React.FC = () => {
         throw new Error(data.error || 'Failed to initiate registration');
       }
 
-      if (data.devOtp) {
-        setOtp(data.devOtp);
-      }
+      // Removed auto-filling of devOtp to ensure users type it manually
 
       setStep(2);
     } catch (err: any) {
@@ -86,9 +83,8 @@ const BloodBankRegistration: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const res = await fetch(`${API_URL}/auth/register/verify`, {
+      const res = await fetchWithAuth(`${API_URL}/auth/register/verify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           ...formData,
           code: otp,
@@ -101,8 +97,9 @@ const BloodBankRegistration: React.FC = () => {
         throw new Error(data.error || 'Failed to complete registration');
       }
 
-      localStorage.setItem('liforce_token', data.token);
+      localStorage.setItem('liforce_userId', data.user.id);
       localStorage.setItem('liforce_role', 'bloodbank');
+      localStorage.setItem('liforce_user', JSON.stringify(data.user));
 
       confetti({
         particleCount: 150,

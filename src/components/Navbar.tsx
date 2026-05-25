@@ -28,13 +28,13 @@ const Navbar: React.FC = () => {
     setRegisterOpen(false);
   }, [location.pathname]);
 
-  const token = localStorage.getItem('liforce_token');
+  const token = localStorage.getItem('liforce_userId');
   const userRole = localStorage.getItem('liforce_role');
   const isAuthenticated = !!token;
   const dashboardPath = userRole === 'bloodbank' ? '/dashboard/bloodbank' : '/dashboard/donor';
 
   const handleLogout = () => {
-    localStorage.removeItem('liforce_token');
+    localStorage.removeItem('liforce_userId');
     localStorage.removeItem('liforce_role');
     window.location.href = '/';
   };
@@ -136,7 +136,7 @@ const Navbar: React.FC = () => {
                         <Link to="/register" className="block px-4 py-3 text-sm font-medium text-text-primary hover:bg-gray-50 border-b border-border">
                           Register as Donor
                         </Link>
-                        <Link to="/register-bloodbank" className="block px-4 py-3 text-sm font-medium text-text-primary hover:bg-gray-50">
+                        <Link to="/register/bloodbank" className="block px-4 py-3 text-sm font-medium text-text-primary hover:bg-gray-50">
                           Register as Blood Bank
                         </Link>
                       </div>
@@ -240,7 +240,7 @@ const Navbar: React.FC = () => {
                         Donor
                       </Link>
                       <Link
-                        to="/register-bloodbank"
+                        to="/register/bloodbank"
                         className="flex-1 text-center py-3 rounded-xl bg-accent text-white font-bold hover:bg-emerald-600 transition-colors text-sm"
                       >
                         Bank

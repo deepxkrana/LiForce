@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { X, Droplet, Users, Phone, Share2, Check, ArrowLeft } from 'lucide-react';
+import { API_URL, fetchWithAuth } from './lib/api';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import FindBlood from './pages/FindBlood';
@@ -14,11 +15,15 @@ import EmergencyRequest from './pages/EmergencyRequest';
 import Leaderboard from './pages/Leaderboard';
 import Community from './pages/Community';
 import DonorProfile from './pages/DonorProfile';
+import BloodBankProfile from './pages/BloodBankProfile';
+import ViewMyCamps from './pages/ViewMyCamps';
 import DonateBlood from './pages/DonateBlood';
 import OrganiseCamp from './pages/OrganiseCamp';
 import Rewards from './pages/Rewards';
 
 import FindDonors from './pages/FindDonors';
+import Settings from './pages/Settings';
+import ForgotPassword from './pages/ForgotPassword';
 import NotFound from './pages/NotFound';
 import AboutUs from './pages/AboutUs';
 import ContactUs from './pages/ContactUs';
@@ -29,7 +34,6 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import { ToastProvider, useToast } from './components/ToastProvider';
 import { ChatProvider } from './context/ChatContext';
-import { API_URL } from './lib/api';
 
 const pageVariants = {
   initial: { opacity: 0, y: 16 },
@@ -39,23 +43,6 @@ const pageVariants = {
 
 const pageTransition = { duration: 0.3 };
 
-const getUserIdFromToken = (token: string | null): string | null => {
-  if (!token) return null;
-  try {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(
-      window
-        .atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    );
-    return JSON.parse(jsonPayload).id;
-  } catch {
-    return null;
-  }
-};
 
 const AnimatedRoutes = () => {
   const location = useLocation();
@@ -71,19 +58,16 @@ const AnimatedRoutes = () => {
 
   const submitSOSResponse = async (responseType: 'I will donate myself' | 'I will bring someone else' | 'Prepared Units'): Promise<boolean> => {
     try {
-      const token = localStorage.getItem('liforce_token');
-      const userId = getUserIdFromToken(token);
+      const userId = localStorage.getItem('liforce_userId');
       
       let responderName = "Anonymous Donor";
       let responderPhone = "";
       let responderBloodGroup = "O+";
       let lastDonatedAt: string | null = null;
 
-      if (token) {
+      if (userId) {
         try {
-          const profileRes = await fetch(`${API_URL}/donors/me`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
+          const profileRes = await fetchWithAuth(`${API_URL}/donors/me`);
           if (profileRes.ok) {
             const profile = await profileRes.json();
             responderName = profile.name;
@@ -127,9 +111,8 @@ const AnimatedRoutes = () => {
         payload.responderId = userId;
       }
 
-      const response = await fetch(`${API_URL}/emergencies/${activeSOS.id}/respond`, {
+      const response = await fetchWithAuth(`${API_URL}/emergencies/${activeSOS.id}/respond`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
@@ -150,8 +133,7 @@ const AnimatedRoutes = () => {
                 
 
   useEffect(() => {
-    const token = localStorage.getItem('liforce_token');
-    const userId = getUserIdFromToken(token);
+    const userId = localStorage.getItem('liforce_userId');
 
     if (userId) {
       if (!socketRef.current || socketRef.current.io.opts.query?.userId !== userId) {
@@ -222,14 +204,21 @@ const AnimatedRoutes = () => {
             <Route path="/login" element={<Login />} />
             <Route path="/find-blood" element={<FindBlood />} />
             <Route path="/register" element={<DonorRegistration />} />
-            <Route path="/register-bloodbank" element={<BloodBankRegistration />} />
+            <Route path="/register/bloodbank" element={<BloodBankRegistration />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+
             <Route path="/dashboard/donor" element={<DonorDashboard />} />
             <Route path="/dashboard/bloodbank" element={<BloodBankDashboard />} />
+            <Route path="/dashboard/bloodbank/camps" element={<ViewMyCamps />} />
             <Route path="/find-donors" element={<FindDonors />} />
             <Route path="/emergency" element={<EmergencyRequest />} />
+            <Route path="/settings" element={<Settings />} />
+
+            {/* Shared Static Pages */}
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/community" element={<Community />} />
             <Route path="/profile/:id" element={<DonorProfile />} />
+            <Route path="/bank-profile/:id" element={<BloodBankProfile />} />
             <Route path="/donate-blood" element={<DonateBlood />} />
             <Route path="/organise-camp" element={<OrganiseCamp />} />
             <Route path="/donate" element={<Navigate to="/register" replace />} />

@@ -8,7 +8,7 @@ import confetti from 'canvas-confetti';
 import { Link, useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { API_URL } from '../lib/api';
+import { API_URL, fetchWithAuth } from '../lib/api';
 import { useToast } from '../components/ToastProvider';
 
 const createCustomIcon = (color: string) =>
@@ -37,8 +37,7 @@ const formSchema = z.object({
   phone: z.string().min(10, "Valid phone number is required"),
   email: z.string().email("Valid email is required"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  city: z.string().min(2, "City is required"),
-  pincode: z.string().min(6, "Valid pincode is required"),
+  address: z.string().min(10, "Full address is required"),
   latitude: z.number().optional(),
   longitude: z.number().optional(),
   
@@ -76,7 +75,7 @@ const DonorRegistration: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem('liforce_token');
+    const token = localStorage.getItem('liforce_userId');
     const role = localStorage.getItem('liforce_role');
     if (token && role) {
       navigate(role === 'bloodbank' ? '/dashboard/bloodbank' : '/dashboard/donor', { replace: true });
@@ -111,7 +110,7 @@ const DonorRegistration: React.FC = () => {
 
   const getFieldsForStep = (step: number) => {
     switch (step) {
-      case 1: return ['fullName', 'age', 'gender', 'phone', 'email', 'password', 'city', 'pincode'];
+      case 1: return ['fullName', 'age', 'gender', 'phone', 'email', 'password', 'address'];
       case 2: return ['bloodGroup', 'lastDonation', 'neverDonated', 'healthConditions', 'currentMedications'];
       case 3: return ['availability', 'notifications', 'maxDistance', 'profileVisibility'];
       default: return [];
@@ -127,9 +126,8 @@ const DonorRegistration: React.FC = () => {
       setIsLoading(true);
       console.log("Initiating registration:", data);
       
-      const regRes = await fetch(`${API_URL}/auth/register/initiate`, {
+      const regRes = await fetchWithAuth(`${API_URL}/auth/register/initiate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: data.email, userType: 'donor' }),
       });
 
@@ -138,10 +136,7 @@ const DonorRegistration: React.FC = () => {
         throw new Error(errorData.error || 'Failed to initiate registration');
       }
       
-      const successData = await regRes.json();
-      if (successData.devOtp) {
-        setOtp(successData.devOtp);
-      }
+      // Removed auto-filling of devOtp to ensure users type it manually
       const formData = getValues();
       setFormDataCache({...formData});
       setCurrentStep(4); // Move to OTP step
@@ -160,9 +155,8 @@ const DonorRegistration: React.FC = () => {
       setIsLoading(true);
       
       // Complete Registration
-      const regRes = await fetch(`${API_URL}/auth/register/verify`, {
+      const regRes = await fetchWithAuth(`${API_URL}/auth/register/verify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: formDataCache.email,
           code: otp,
@@ -172,6 +166,7 @@ const DonorRegistration: React.FC = () => {
           userType: 'donor',
           age: formDataCache.age,
           gender: formDataCache.gender,
+          address: formDataCache.address,
           latitude: formDataCache.latitude,
           longitude: formDataCache.longitude
         })
@@ -180,20 +175,17 @@ const DonorRegistration: React.FC = () => {
       const data = await regRes.json();
       if (!regRes.ok) throw new Error(data.error || 'Invalid OTP');
       
-      if (data.token) {
-        localStorage.setItem('liforce_token', data.token);
+      if (data.user) {
+        localStorage.setItem('liforce_userId', data.user.id);
         localStorage.setItem('liforce_role', 'donor');
+        localStorage.setItem('liforce_user', JSON.stringify(data.user));
         
         // Update additional profile details (Donor Service)
-        await fetch(`${API_URL}/donors/me`, {
+        await fetchWithAuth(`${API_URL}/donors/me`, {
           method: 'PUT',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${data.token}`
-          },
           body: JSON.stringify({
             phone: formDataCache.phone,
-            city: formDataCache.city,
+            address: formDataCache.address,
             maxTravelDistanceKm: formDataCache.maxDistance,
             notificationsEnabled: formDataCache.notifications.length > 0,
             latitude: formDataCache.latitude,
@@ -401,24 +393,15 @@ const DonorRegistration: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 gap-6">
                     <div>
-                      <label className="block text-sm font-bold text-text-primary mb-2">City</label>
-                      <input 
-                        {...register('city')} 
-                        className={`w-full px-4 py-3 rounded-lg border ${errors.city ? 'border-critical' : 'border-border focus:border-primary'} bg-background outline-none transition-colors`}
-                        placeholder="e.g. Chandigarh"
+                      <label className="block text-sm font-bold text-text-primary mb-2">Full Address</label>
+                      <textarea 
+                        {...register('address')} 
+                        className={`w-full px-4 py-3 rounded-lg border ${errors.address ? 'border-critical' : 'border-border focus:border-primary'} bg-background outline-none transition-colors resize-none h-24`}
+                        placeholder="Enter your complete address..."
                       />
-                      {errors.city && <p className="text-critical text-xs mt-1">{errors.city.message}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-bold text-text-primary mb-2">Pincode</label>
-                      <input 
-                        {...register('pincode')} 
-                        className={`w-full px-4 py-3 rounded-lg border ${errors.pincode ? 'border-critical' : 'border-border focus:border-primary'} bg-background outline-none transition-colors`}
-                        placeholder="e.g. 160012"
-                      />
-                      {errors.pincode && <p className="text-critical text-xs mt-1">{errors.pincode.message}</p>}
+                      {errors.address && <p className="text-critical text-xs mt-1">{errors.address.message}</p>}
                     </div>
                   </div>
                 </motion.div>

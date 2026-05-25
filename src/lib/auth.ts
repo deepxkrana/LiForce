@@ -1,5 +1,5 @@
 export const logout = () => {
-  localStorage.removeItem('liforce_token');
+  localStorage.removeItem('liforce_userId');
   localStorage.removeItem('liforce_role');
   window.location.href = '/';
 };

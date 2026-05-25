@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { Search, MapPin, Phone, Navigation, X, Mail, Sparkles, Copy, Check, AlertCircle, ShieldCheck } from 'lucide-react';
 import { useToast } from '../components/ToastProvider';
-import { API_URL } from '../lib/api';
+import { API_URL, fetchWithAuth } from '../lib/api';
 import L from 'leaflet';
 
 const createCustomIcon = (color: string) =>
@@ -152,20 +152,16 @@ const FindBlood: React.FC = () => {
     contactNumber: '',
   });
 
-  const isLoggedIn = !!localStorage.getItem('liforce_token');
+  const isLoggedIn = !!localStorage.getItem('liforce_userId');
 
   // Load user data if logged in to autofill contact number and set location
   useEffect(() => {
     if (isLoggedIn) {
       const role = localStorage.getItem('liforce_role');
-      const token = localStorage.getItem('liforce_token');
-
       if (role === 'bloodbank') {
         const fetchBankProfile = async () => {
           try {
-            const res = await fetch(`${API_URL}/bloodbanks/me/dashboard`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const res = await fetchWithAuth(`${API_URL}/bloodbanks/me/dashboard`);
             if (res.ok) {
               const data = await res.json();
               if (data.bank) {
@@ -184,9 +180,7 @@ const FindBlood: React.FC = () => {
       } else {
         const fetchDonorProfile = async () => {
           try {
-            const res = await fetch(`${API_URL}/donors/me`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const res = await fetchWithAuth(`${API_URL}/donors/me`);
             if (res.ok) {
               const data = await res.json();
               if (data.phone) {
@@ -234,7 +228,7 @@ const FindBlood: React.FC = () => {
   useEffect(() => {
     const fetchBanks = async () => {
       try {
-        const response = await fetch(`${API_URL}/bloodbanks`);
+        const response = await fetchWithAuth(`${API_URL}/bloodbanks`);
         const data = await response.json();
         const formatted = data.map((b: any) => {
           // Recompute status per blood group with per-bank thresholds
@@ -267,7 +261,7 @@ const FindBlood: React.FC = () => {
             phone: b.phone || '',
             email: b.email || '',
             licenseNumber: b.licenseNumber || '',
-            openNow: true,
+            openNow: b.isOpen !== false,
             status: overallStatus,
             bloodGroups: inventoryWithStatus,
           };
@@ -388,19 +382,10 @@ const FindBlood: React.FC = () => {
       assignedBloodBankId: selectedRequestBank.id,
     };
 
-    const token = localStorage.getItem('liforce_token');
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
     try {
       setIsSubmitting(true);
-      const res = await fetch(`${API_URL}/emergencies`, {
+      const res = await fetchWithAuth(`${API_URL}/emergencies`, {
         method: 'POST',
-        headers,
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -613,8 +598,10 @@ const FindBlood: React.FC = () => {
                         <span className="truncate">{bank.calculatedDistance === Infinity ? 'Unknown distance' : `${bank.calculatedDistance?.toFixed(1)} km`} · {bank.address}</span>
                       </p>
                     </div>
-                    {bank.openNow && (
+                    {bank.openNow ? (
                       <span className="bg-[#E8F5F1] text-accent text-xs px-2 py-1 rounded font-medium shrink-0">Open</span>
+                    ) : (
+                      <span className="bg-red-50 text-red-600 border border-red-100 text-xs px-2 py-1 rounded font-bold shrink-0">Closed</span>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-2 mb-4">

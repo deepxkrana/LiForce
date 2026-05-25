@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { Search, MapPin, Phone, Navigation, X, Mail, Copy, Check, ShieldCheck } from 'lucide-react';
 import { useToast } from '../components/ToastProvider';
-import { API_URL } from '../lib/api';
+import { API_URL, fetchWithAuth } from '../lib/api';
 import L from 'leaflet';
 
 const createCustomIcon = (color: string) =>
@@ -16,7 +16,6 @@ const createCustomIcon = (color: string) =>
   });
 
 const iconGood = createCustomIcon('#1D9E75');
-const iconWarning = createCustomIcon('#E67E22');
 const iconCritical = createCustomIcon('#E24B4A');
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 
@@ -129,35 +128,16 @@ const FindDonors: React.FC = () => {
 
   // Premium modal states
   const [selectedContactBank, setSelectedContactBank] = useState<any | null>(null);
-  const [selectedRequestBank, setSelectedRequestBank] = useState<any | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-
-  const [requestForm, setRequestForm] = useState({
-    bloodGroup: 'A+',
-    unitsRequired: 1,
-    deliveryMode: 'Self-Collection',
-    deliveryAddress: '',
-    date: new Date().toISOString().split('T')[0],
-    timeSlot: '10:00',
-    patientName: '',
-    patientAge: '',
-    patientGender: 'Male',
-    urgencyLevel: 'Normal',
-    contactNumber: '',
-  });
-
-  const isLoggedIn = !!localStorage.getItem('liforce_token');
+  const isLoggedIn = !!localStorage.getItem('liforce_userId');
 
   // Load user data if logged in to autofill contact number
   useEffect(() => {
     if (isLoggedIn) {
       const fetchBankProfile = async () => {
         try {
-          const token = localStorage.getItem('liforce_token');
-          const res = await fetch(`${API_URL}/bloodbanks/me/dashboard`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
+          const res = await fetchWithAuth(`${API_URL}/bloodbanks/me/dashboard`);
           if (res.ok) {
             const data = await res.json();
             if (data.bank?.latitude && data.bank?.longitude) {
@@ -173,20 +153,7 @@ const FindDonors: React.FC = () => {
     }
   }, [isLoggedIn]);
 
-  // Set default requested blood group when a blood bank is selected
-  useEffect(() => {
-    if (selectedRequestBank) {
-      if (selectedGroups.length > 0) {
-        setRequestForm(prev => ({ ...prev, bloodGroup: selectedGroups[0] }));
-      } else if (searchGroup) {
-        setRequestForm(prev => ({ ...prev, bloodGroup: searchGroup }));
-      } else if (selectedRequestBank.bloodGroups?.length > 0) {
-        setRequestForm(prev => ({ ...prev, bloodGroup: selectedRequestBank.bloodGroups[0].type }));
-      } else {
-        setRequestForm(prev => ({ ...prev, bloodGroup: 'A+' }));
-      }
-    }
-  }, [selectedRequestBank, selectedGroups, searchGroup]);
+
 
   useEffect(() => {
     const g = searchParams.get('group');
@@ -201,12 +168,12 @@ const FindDonors: React.FC = () => {
   useEffect(() => {
     const fetchBanks = async () => {
       try {
-        const response = await fetch(`${API_URL}/donors`);
+        const response = await fetchWithAuth(`${API_URL}/donors`);
         const data = await response.json();
         const formatted = data.map((d: any) => ({
             id: d.id,
             name: d.name,
-            address: d.city || 'Unknown City',
+            address: d.address || 'Unknown Address',
             lat: d.latitude || 30.7333,
             lng: d.longitude || 76.7794,
             distance: 'Nearby',
@@ -284,11 +251,7 @@ const FindDonors: React.FC = () => {
     }
   };
 
-  const getBankMarkerIcon = (status: string) => {
-    if (status === 'Critical') return iconCritical;
-    if (status === 'Warning') return iconWarning;
-    return iconGood;
-  };
+
 
   const handleSearch = () => {
     if (searchGroup && !selectedGroups.includes(searchGroup)) {
