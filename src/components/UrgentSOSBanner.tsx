@@ -20,58 +20,12 @@ interface Emergency {
   patientAge?: number;
 }
 
-const PRESET_EMERGENCIES: Emergency[] = [
-  {
-    id: "preset-1",
-    patientName: "Mohan Singh",
-    bloodGroup: "O-",
-    unitsRequired: 2,
-    hospitalAddress: "PGIMER",
-    city: "Chandigarh",
-    urgency: "Critical"
-  },
-  {
-    id: "preset-2",
-    patientName: "Aarav Sharma",
-    bloodGroup: "B+",
-    unitsRequired: 3,
-    hospitalAddress: "Fortis Hospital",
-    city: "Mohali",
-    urgency: "High"
-  },
-  {
-    id: "preset-3",
-    patientName: "Priya Patel",
-    bloodGroup: "A-",
-    unitsRequired: 4,
-    hospitalAddress: "AIIMS",
-    city: "New Delhi",
-    urgency: "Critical"
-  },
-  {
-    id: "preset-4",
-    patientName: "Rohan Kapoor",
-    bloodGroup: "AB+",
-    unitsRequired: 1,
-    hospitalAddress: "KEM Hospital",
-    city: "Mumbai",
-    urgency: "Normal"
-  },
-  {
-    id: "preset-5",
-    patientName: "Sneha Reddy",
-    bloodGroup: "O+",
-    unitsRequired: 3,
-    hospitalAddress: "Apollo Hospital",
-    city: "Bengaluru",
-    urgency: "High"
-  }
-];
+
 
 const UrgentSOSBanner: React.FC = () => {
   const { showToast } = useToast();
   const [isVisible, setIsVisible] = useState(true);
-  const [emergencies, setEmergencies] = useState<Emergency[]>(PRESET_EMERGENCIES);
+  const [emergencies, setEmergencies] = useState<Emergency[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [direction, setDirection] = useState(1); // 1 = right, -1 = left
   const [isHovered, setIsHovered] = useState(false);
@@ -93,11 +47,12 @@ const UrgentSOSBanner: React.FC = () => {
   // Load nearby emergencies if user is logged in
   useEffect(() => {
     const fetchNearby = async () => {
-      if (!token) return;
       try {
-        const response = await fetch(`${API_URL}/donors/emergencies/nearby`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const headers: any = {};
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        const response = await fetch(`${API_URL}/emergencies/banner`, { headers });
         if (response.ok) {
           const data = await response.json();
           if (Array.isArray(data) && data.length > 0) {
@@ -111,6 +66,8 @@ const UrgentSOSBanner: React.FC = () => {
               urgency: item.urgency || "Critical"
             }));
             setEmergencies(mapped);
+          } else {
+            setEmergencies([]);
           }
         }
       } catch (err) {
@@ -198,14 +155,7 @@ const UrgentSOSBanner: React.FC = () => {
     setIsSubmitting(true);
     const activeReq = emergencies[currentIndex];
 
-    // Simulate mock responses instantly for preset IDs
-    if (activeReq.id.startsWith('preset-')) {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      setIsSubmitting(false);
-      setIsSuccess(true);
-      showToast('Simulated response captured! Thank you for experiencing LiForce.', 'success');
-      return;
-    }
+
 
     try {
       const response = await fetch(`${API_URL}/emergencies/${activeReq.id}/respond`, {

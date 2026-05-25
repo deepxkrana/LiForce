@@ -83,6 +83,13 @@ const AVAILABLE_BLOOD_BANKS = [
   { id: '4', name: 'Max Hospital Blood Bank', address: 'Phase 6, Mohali' },
 ];
 
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+};
+
 const DonorDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -619,10 +626,17 @@ const DonorDashboard: React.FC = () => {
     monthDate.setMonth(monthDate.getMonth() - (11 - i));
     const monthStr = monthDate.toLocaleString('default', { month: 'short' });
     
-    const count = donorData?.donations?.filter((d: any) => {
+    const directCount = donorData?.donations?.filter((d: any) => {
       const dDate = new Date(d.scheduledDate);
       return dDate.getMonth() === monthDate.getMonth() && dDate.getFullYear() === monthDate.getFullYear() && d.status === 'Completed';
     }).length || 0;
+
+    const campCount = donorData?.donatedCamps?.filter((c: any) => {
+      const cDate = new Date(c.date);
+      return cDate.getMonth() === monthDate.getMonth() && cDate.getFullYear() === monthDate.getFullYear();
+    }).length || 0;
+
+    const count = directCount + campCount;
 
     return { month: monthStr, donations: count };
   });
@@ -817,7 +831,7 @@ const DonorDashboard: React.FC = () => {
             {initials}
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-text-primary">Good morning, {name.split(' ')[0]}</h1>
+            <h1 className="text-2xl font-bold text-text-primary">{getGreeting()}, {name.split(' ')[0]}</h1>
             <div className="flex items-center mt-1">
               <span className="px-2 py-0.5 bg-primary-light text-primary-dark rounded text-xs font-bold mr-2 border border-[#F5B7B1]">{bloodGroup}</span>
               <span className="text-sm text-text-secondary">Ready to save lives today?</span>
@@ -1644,9 +1658,9 @@ const DonorDashboard: React.FC = () => {
                       <span className="font-semibold text-text-secondary">Phone</span>
                       <span className="font-bold text-text-primary">{donorData.phone || 'Not Provided'}</span>
                     </div>
-                    <div className="flex items-center justify-between text-sm py-1 border-b border-gray-100 last:border-0">
-                      <span className="font-semibold text-text-secondary">Address</span>
-                      <span className="font-bold text-text-primary capitalize">{donorData.address || 'Not Provided'}</span>
+                    <div className="flex items-start justify-between text-sm py-1 gap-4 border-b border-gray-100 last:border-0">
+                      <span className="font-semibold text-text-secondary shrink-0">Address</span>
+                      <span className="font-bold text-text-primary capitalize text-right break-words">{donorData.address || 'Not Provided'}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm py-1 border-b border-gray-100 last:border-0">
                       <span className="font-semibold text-text-secondary">Max Travel Distance</span>

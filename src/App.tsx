@@ -34,6 +34,7 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import { ToastProvider, useToast } from './components/ToastProvider';
 import { ChatProvider } from './context/ChatContext';
+import ScrollToTop from './components/ScrollToTop';
 
 const pageVariants = {
   initial: { opacity: 0, y: 16 },
@@ -490,6 +491,7 @@ function App() {
     <ToastProvider>
       <ChatProvider>
         <Router>
+          <ScrollToTop />
           <AnimatedRoutes />
           {/* Footer removed */}
           <ChatbotWidget />
