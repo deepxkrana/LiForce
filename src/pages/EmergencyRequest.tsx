@@ -8,7 +8,7 @@ import L from 'leaflet';
 import { AlertCircle, Send, MapPin, Activity, Navigation, Building2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Link, useLocation } from 'react-router-dom';
-import { API_URL } from '../lib/api';
+import { API_URL, fetchWithAuth } from '../lib/api';
 import { useToast } from '../components/ToastProvider';
 import { getDashboardPath } from '../lib/auth';
 
@@ -50,6 +50,31 @@ const EmergencyRequest: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [matchedDonors, setMatchedDonors] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [userLat, setUserLat] = useState(30.7333);
+  const [userLng, setUserLng] = useState(76.7794);
+
+  useEffect(() => {
+    const fetchUserLocation = async () => {
+      const role = localStorage.getItem('liforce_role');
+      if (!role) return;
+      try {
+        const endpoint = role === 'bloodbank' ? '/bloodbanks/me/dashboard' : '/donors/me';
+        const response = await fetchWithAuth(`${API_URL}${endpoint}`);
+        if (response.ok) {
+          const data = await response.json();
+          const lat = role === 'bloodbank' ? data.bank?.latitude : data.latitude;
+          const lng = role === 'bloodbank' ? data.bank?.longitude : data.longitude;
+          if (lat && lng) {
+            setUserLat(lat);
+            setUserLng(lng);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch location", err);
+      }
+    };
+    fetchUserLocation();
+  }, []);
 
   const { register, handleSubmit, formState: { errors }, watch, setValue } = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -88,18 +113,12 @@ const EmergencyRequest: React.FC = () => {
       }
       setIsSearching(true);
       try {
-        const token = localStorage.getItem('liforce_userId');
-        const headers: any = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const response = await fetch(`${API_URL}/match/emergency`, {
+        const response = await fetchWithAuth(`${API_URL}/match/emergency`, {
           method: 'POST',
-          headers,
           body: JSON.stringify({
             bloodGroup,
-            latitude: 30.7333, // Default to Chandigarh center for now
-            longitude: 76.7794,
-            radiusKm: 15
+            latitude: userLat,
+            longitude: userLng
           })
         });
         if (response.ok) {
@@ -126,7 +145,7 @@ const EmergencyRequest: React.FC = () => {
     }, 500);
     
     return () => clearTimeout(timer);
-  }, [bloodGroup, refreshKey]);
+  }, [bloodGroup, refreshKey, userLat, userLng]);
 
   const onSubmit = async (data: FormData) => {
     try {
@@ -147,8 +166,8 @@ const EmergencyRequest: React.FC = () => {
         headers,
         body: JSON.stringify({
           ...data,
-          latitude: 30.7333,
-          longitude: 76.7794,
+          latitude: userLat,
+          longitude: userLng,
           requiredDate: now.toISOString(),
         })
       });
@@ -196,7 +215,7 @@ const EmergencyRequest: React.FC = () => {
             </div>
             <h2 className="text-3xl font-bold text-text-primary mb-4">Alert Broadcasted!</h2>
             <p className="text-text-secondary mb-8">
-              Your emergency request has been sent to <strong>{matchedDonors.length} matched donors</strong> within a 15km radius.
+              Your emergency request has been sent to <strong>{matchedDonors.length} matched donors/banks</strong> near you.
             </p>
             <div className="bg-primary-light p-4 rounded-xl mb-8 border border-[#F5B7B1] text-left">
               <p className="text-sm font-bold text-primary-dark mb-2 flex items-center">
@@ -441,8 +460,8 @@ const EmergencyRequest: React.FC = () => {
             {/* Map Area */}
             <div className="h-[300px] rounded-xl overflow-hidden border border-border relative z-0 mb-6 shrink-0">
               <MapContainer 
-                key={refreshKey}
-                center={[30.7333, 76.7794]} 
+                key={`${refreshKey}-${userLat}-${userLng}`}
+                center={[userLat, userLng]} 
                 zoom={12} 
                 scrollWheelZoom={false} 
                 className="w-full h-full"
@@ -451,7 +470,7 @@ const EmergencyRequest: React.FC = () => {
                 <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
                 
                 {/* User/Hospital Pin */}
-                <Marker position={[30.7333, 76.7794]} icon={createStatusIcon('Critical')}>
+                <Marker position={[userLat, userLng]} icon={createStatusIcon('Critical')}>
                   <Popup>Requested Location</Popup>
                 </Marker>
 
