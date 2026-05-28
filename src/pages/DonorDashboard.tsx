@@ -12,7 +12,7 @@ import DashboardLayout from '../layouts/DashboardLayout';
 import SectionPlaceholder from '../components/dashboard/SectionPlaceholder';
 import { useToast } from '../components/ToastProvider';
 import { useChat } from '../context/ChatContext';
-import { API_URL } from '../lib/api';
+import { API_URL, fetchWithAuth } from '../lib/api';
 
 
 
@@ -129,7 +129,7 @@ const DonorDashboard: React.FC = () => {
       const token = localStorage.getItem('liforce_userId');
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/emergencies/${requestId}/respond`, {
+      const response = await fetchWithAuth(`${API_URL}/emergencies/${requestId}/respond`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -149,7 +149,7 @@ const DonorDashboard: React.FC = () => {
         showToast('Your emergency response has been registered! Thank you.', 'success');
         // Refresh nearby requests
         try {
-          const responseNearby = await fetch(`${API_URL}/donors/emergencies/nearby`, {
+          const responseNearby = await fetchWithAuth(`${API_URL}/donors/emergencies/nearby`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (responseNearby.ok) {
@@ -178,7 +178,7 @@ const DonorDashboard: React.FC = () => {
       const token = localStorage.getItem('liforce_userId');
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/donors/me`, {
+      const response = await fetchWithAuth(`${API_URL}/donors/me`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -198,7 +198,7 @@ const DonorDashboard: React.FC = () => {
         showToast('Profile updated successfully!', 'success');
         setIsEditingProfile(false);
         // Refresh profile data
-        const updatedResponse = await fetch(`${API_URL}/donors/me`, {
+        const updatedResponse = await fetchWithAuth(`${API_URL}/donors/me`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (updatedResponse.ok) {
@@ -220,7 +220,7 @@ const DonorDashboard: React.FC = () => {
       const token = localStorage.getItem('liforce_userId');
       if (!token) return;
       
-      const response = await fetch(`${API_URL}/emergencies/my-active`, {
+      const response = await fetchWithAuth(`${API_URL}/emergencies/my-active`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -239,7 +239,7 @@ const DonorDashboard: React.FC = () => {
       const token = localStorage.getItem('liforce_userId');
       if (!token) return;
       
-      const response = await fetch(`${API_URL}/emergencies/${id}/status`, {
+      const response = await fetchWithAuth(`${API_URL}/emergencies/${id}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -265,7 +265,7 @@ const DonorDashboard: React.FC = () => {
       const token = localStorage.getItem('liforce_userId');
       if (!token) return;
       
-      const response = await fetch(`${API_URL}/emergencies/${id}/status`, {
+      const response = await fetchWithAuth(`${API_URL}/emergencies/${id}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -290,7 +290,7 @@ const DonorDashboard: React.FC = () => {
     try {
       const token = localStorage.getItem('liforce_userId');
       if (!token) return;
-      const res = await fetch(`${API_URL}/notifications/${id}/read`, {
+      const res = await fetchWithAuth(`${API_URL}/notifications/${id}/read`, {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -362,7 +362,7 @@ const DonorDashboard: React.FC = () => {
       const token = localStorage.getItem('liforce_userId');
       if (!token) return; // Not logged in
       
-      const response = await fetch(`${API_URL}/donors/me`, {
+      const response = await fetchWithAuth(`${API_URL}/donors/me`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -375,7 +375,7 @@ const DonorDashboard: React.FC = () => {
 
       // Fetch nearby requests
       try {
-        const responseNearby = await fetch(`${API_URL}/donors/emergencies/nearby`, {
+        const responseNearby = await fetchWithAuth(`${API_URL}/donors/emergencies/nearby`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -390,7 +390,7 @@ const DonorDashboard: React.FC = () => {
 
       // Fetch general notifications
       try {
-        const notifRes = await fetch(`${API_URL}/notifications`, {
+        const notifRes = await fetchWithAuth(`${API_URL}/notifications`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -404,7 +404,7 @@ const DonorDashboard: React.FC = () => {
 
       // Fetch blood banks
       try {
-        const banksRes = await fetch(`${API_URL}/bloodbanks`);
+        const banksRes = await fetch(`${API_URL}/bloodbanks`); // Public route doesn't strictly need auth
         if (banksRes.ok) {
           const banksData = await banksRes.json();
           setBloodBanks(banksData);
@@ -500,7 +500,7 @@ const DonorDashboard: React.FC = () => {
         const token = localStorage.getItem('liforce_userId');
         if (!token) return;
         
-        const response = await fetch(`${API_URL}/donations/${upcomingAppointment.id}/cancel`, {
+        const response = await fetchWithAuth(`${API_URL}/donations/${upcomingAppointment.id}/cancel`, {
           method: 'PUT',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -531,7 +531,7 @@ const DonorDashboard: React.FC = () => {
         
         const combinedDateTime = combineDateAndTimeSlot(rescheduleDate, rescheduleTime);
         
-        const response = await fetch(`${API_URL}/donations/${upcomingAppointment.id}/reschedule`, {
+        const response = await fetchWithAuth(`${API_URL}/donations/${upcomingAppointment.id}/reschedule`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -577,7 +577,7 @@ const DonorDashboard: React.FC = () => {
       
       const combinedDateTime = combineDateAndTimeSlot(scheduleDate, scheduleTime);
       
-      const response = await fetch(`${API_URL}/donations/book`, {
+      const response = await fetchWithAuth(`${API_URL}/donations/book`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
